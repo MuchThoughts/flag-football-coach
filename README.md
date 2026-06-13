@@ -21,7 +21,7 @@ The app works local-first with `localStorage` when Supabase is not configured.
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 ```
 
 4. Restart the dev server.

@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --ink: #10201a;
+  --muted: #53665c;
+  --paper: #f7f5ee;
+  --panel: #ffffff;
+  --line: #d8ded5;
+  --turf: #1f7a4d;
+  --turf-dark: #14583a;
+  --chalk: #f6f2df;
+  --signal: #f7c948;
+  --danger: #c2412d;
+  --sky: #d9eef6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--paper);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ink);
+  background:
+    linear-gradient(135deg, rgba(217, 238, 246, 0.72), rgba(247, 245, 238, 0.9) 38%, rgba(244, 220, 143, 0.28)),
+    var(--paper);
+  font-family: Aptos, "SF Pro Text", "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  touch-action: manipulation;
+}
+
+::selection {
+  background: rgba(247, 201, 72, 0.45);
+}
+
+.field-yardlines {
+  background:
+    linear-gradient(90deg, rgba(246, 242, 223, 0.22) 1px, transparent 1px) 0 0 / 10% 100%,
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.18), transparent 34%),
+    linear-gradient(135deg, var(--turf), var(--turf-dark));
+}
+
+.safe-bottom {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}

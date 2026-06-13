@@ -34,7 +34,16 @@ import { applyLineupTemplateToDrive } from '@/lib/lineup-templates'
 import { SLOTS_BY_UNIT } from '@/lib/positions'
 import { createDrive, initialAppState } from '@/lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '@/lib/season-analytics'
-import { appSettingsFromMembership, ensureSupabaseMembership, loadSupabaseState, saveSupabaseState, subscribeToSupabaseState, type SupabaseMembership } from '@/lib/supabase/app-state'
+import {
+  acceptSupabaseAssistantInvite,
+  appSettingsFromMembership,
+  createSupabaseAssistantInvite,
+  ensureSupabaseMembership,
+  loadSupabaseState,
+  saveSupabaseState,
+  subscribeToSupabaseState,
+  type SupabaseMembership
+} from '@/lib/supabase/app-state'
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Game, LineupTemplate, Player, PlaybookPlay, PracticePlan, PracticeTemplate, Unit } from '@/lib/types'
 
@@ -164,6 +173,13 @@ export default function CoachApp() {
   const [syncMembership, setSyncMembership] = useState<SupabaseMembership | null>(null)
   const [syncReady, setSyncReady] = useState(false)
   const [authForm, setAuthForm] = useState({ email: '', password: '' })
+  const [assistantInviteForm, setAssistantInviteForm] = useState({
+    email: '',
+    canAddNotes: true,
+    canAdvanceDrive: false
+  })
+  const [assistantInviteToken, setAssistantInviteToken] = useState('')
+  const [assistantInviteAcceptCode, setAssistantInviteAcceptCode] = useState('')
   const saveTimerRef = useRef<number | null>(null)
   const applyingRemoteStateRef = useRef(false)
 
@@ -1396,6 +1412,78 @@ export default function CoachApp() {
     }
   }
 
+  async function createAssistantInvite() {
+    if (!syncTeamId || !syncUserId) {
+      setSyncStatus('signed_out')
+      setSyncMessage('Sign in as head coach first')
+      return
+    }
+
+    if (syncMembership?.role !== 'head_coach') {
+      setSyncStatus('error')
+      setSyncMessage('Only head coaches can invite assistants')
+      return
+    }
+
+    try {
+      setSyncStatus('saving')
+      setSyncMessage('Creating invite')
+      const token = await createSupabaseAssistantInvite(
+        syncTeamId,
+        assistantInviteForm.email,
+        assistantInviteForm.canAddNotes,
+        assistantInviteForm.canAdvanceDrive
+      )
+      setAssistantInviteToken(token)
+      setAssistantInviteForm((current) => ({ ...current, email: '' }))
+      setSyncStatus('synced')
+      setSyncMessage('Invite code created')
+    } catch (error) {
+      setSyncStatus('error')
+      setSyncMessage(error instanceof Error ? error.message : 'Invite failed')
+    }
+  }
+
+  async function acceptAssistantInvite() {
+    if (!syncUserId) {
+      setSyncStatus('signed_out')
+      setSyncMessage('Sign in before accepting an invite')
+      return
+    }
+
+    const token = assistantInviteAcceptCode.trim()
+    if (!token) {
+      setSyncStatus('error')
+      setSyncMessage('Invite code required')
+      return
+    }
+
+    try {
+      setSyncStatus('loading')
+      setSyncMessage('Accepting invite')
+      const membership = await acceptSupabaseAssistantInvite(token)
+      setSyncTeamId(membership.teamId)
+      setSyncMembership(membership)
+      setAppSettings((current) => appSettingsFromMembership(membership, current))
+      const snapshot = await loadSupabaseState(membership.teamId)
+      if (snapshot?.state) {
+        applyingRemoteStateRef.current = true
+        applyAppState(snapshot.state, membership)
+        window.setTimeout(() => {
+          applyingRemoteStateRef.current = false
+        }, 500)
+      }
+      setAssistantInviteAcceptCode('')
+      setSyncReady(true)
+      setSyncStatus('synced')
+      setSyncMessage('Assistant access active')
+      setActiveView('gameday')
+    } catch (error) {
+      setSyncStatus('error')
+      setSyncMessage(error instanceof Error ? error.message : 'Invite failed')
+    }
+  }
+
   return (
     <main className="min-h-screen pb-24 lg:pb-0">
       <div className="mx-auto flex w-full max-w-7xl gap-5 px-3 py-3 sm:px-5 lg:px-6">
@@ -1583,12 +1671,20 @@ export default function CoachApp() {
               syncStatus={syncStatus}
               syncMessage={syncMessage}
               syncUserEmail={syncUserEmail}
+              syncMembership={syncMembership}
               authForm={authForm}
               setAuthForm={setAuthForm}
+              assistantInviteForm={assistantInviteForm}
+              setAssistantInviteForm={setAssistantInviteForm}
+              assistantInviteToken={assistantInviteToken}
+              assistantInviteAcceptCode={assistantInviteAcceptCode}
+              setAssistantInviteAcceptCode={setAssistantInviteAcceptCode}
               authenticateSupabase={authenticateSupabase}
               signOutSupabase={signOutSupabase}
               saveCloudNow={saveCloudNow}
               loadCloudNow={loadCloudNow}
+              createAssistantInvite={createAssistantInvite}
+              acceptAssistantInvite={acceptAssistantInvite}
               newPractice={newPractice}
               setNewPractice={setNewPractice}
               addPractice={addPractice}
@@ -2847,12 +2943,20 @@ function MoreView({
   syncStatus,
   syncMessage,
   syncUserEmail,
+  syncMembership,
   authForm,
   setAuthForm,
+  assistantInviteForm,
+  setAssistantInviteForm,
+  assistantInviteToken,
+  assistantInviteAcceptCode,
+  setAssistantInviteAcceptCode,
   authenticateSupabase,
   signOutSupabase,
   saveCloudNow,
   loadCloudNow,
+  createAssistantInvite,
+  acceptAssistantInvite,
   newPractice,
   setNewPractice,
   addPractice,
@@ -2897,12 +3001,20 @@ function MoreView({
   syncStatus: SyncStatus
   syncMessage: string
   syncUserEmail: string
+  syncMembership: SupabaseMembership | null
   authForm: { email: string; password: string }
   setAuthForm: (form: { email: string; password: string }) => void
+  assistantInviteForm: { email: string; canAddNotes: boolean; canAdvanceDrive: boolean }
+  setAssistantInviteForm: (form: { email: string; canAddNotes: boolean; canAdvanceDrive: boolean }) => void
+  assistantInviteToken: string
+  assistantInviteAcceptCode: string
+  setAssistantInviteAcceptCode: (value: string) => void
   authenticateSupabase: (mode: 'sign-in' | 'sign-up') => void
   signOutSupabase: () => void
   saveCloudNow: () => void
   loadCloudNow: () => void
+  createAssistantInvite: () => void
+  acceptAssistantInvite: () => void
   newPractice: Omit<PracticePlan, 'id' | 'teamId'>
   setNewPractice: (practice: Omit<PracticePlan, 'id' | 'teamId'>) => void
   addPractice: () => void
@@ -3424,7 +3536,7 @@ function MoreView({
 
             {!supabaseConfigured ? (
               <div className="mt-3 rounded-lg bg-[#f7f5ee] px-3 py-2 text-sm font-bold text-[#53665c]">
-                Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+                Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
               </div>
             ) : syncUserEmail ? (
               <div className="mt-3 grid grid-cols-3 gap-2">
@@ -3488,6 +3600,72 @@ function MoreView({
                     className="rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     Create
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {supabaseConfigured && syncUserEmail && (
+              <div className="mt-4 space-y-3 border-t border-[#d8ded5] pt-3">
+                {syncMembership?.role === 'head_coach' && (
+                  <div className="space-y-2">
+                    <p className="text-xs font-black uppercase text-[#53665c]">Assistant Invite</p>
+                    <input
+                      value={assistantInviteForm.email}
+                      onChange={(event) => setAssistantInviteForm({ ...assistantInviteForm, email: event.target.value })}
+                      className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 text-sm outline-none focus:border-[#1f7a4d]"
+                      placeholder="Assistant email"
+                      type="email"
+                    />
+                    <label className="flex items-center justify-between gap-3 rounded-lg bg-[#f7f5ee] px-3 py-2 text-sm font-black">
+                      Add notes
+                      <input
+                        type="checkbox"
+                        checked={assistantInviteForm.canAddNotes}
+                        onChange={(event) => setAssistantInviteForm({ ...assistantInviteForm, canAddNotes: event.target.checked })}
+                        className="h-5 w-5 accent-[#1f7a4d]"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-3 rounded-lg bg-[#f7f5ee] px-3 py-2 text-sm font-black">
+                      Advance drives
+                      <input
+                        type="checkbox"
+                        checked={assistantInviteForm.canAdvanceDrive}
+                        onChange={(event) => setAssistantInviteForm({ ...assistantInviteForm, canAdvanceDrive: event.target.checked })}
+                        className="h-5 w-5 accent-[#1f7a4d]"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={createAssistantInvite}
+                      disabled={syncBusy}
+                      className="w-full rounded-lg bg-[#10201a] px-3 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Create Invite Code
+                    </button>
+                    {assistantInviteToken && (
+                      <div className="rounded-lg bg-[#f7c948] px-3 py-2 text-sm font-black text-[#10201a]">
+                        <p className="text-xs uppercase opacity-75">Invite Code</p>
+                        <p className="break-all font-mono text-base">{assistantInviteToken}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="space-y-2">
+                  <p className="text-xs font-black uppercase text-[#53665c]">Join Team</p>
+                  <input
+                    value={assistantInviteAcceptCode}
+                    onChange={(event) => setAssistantInviteAcceptCode(event.target.value)}
+                    className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 text-sm outline-none focus:border-[#1f7a4d]"
+                    placeholder="Invite code"
+                  />
+                  <button
+                    type="button"
+                    onClick={acceptAssistantInvite}
+                    disabled={syncBusy}
+                    className="w-full rounded-lg bg-[#10201a] px-3 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Accept Invite
                   </button>
                 </div>
               </div>

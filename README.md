@@ -27,6 +27,22 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 4. Restart the dev server.
 5. Go to `More > Supabase` to create an account or sign in.
 
+## Assistant Coaches
+
+Head coaches can create assistant invite codes from `More > Supabase`.
+
+1. Sign in as the head coach.
+2. Enter the assistant email.
+3. Choose whether they can add notes or advance drives.
+4. Create an invite code and send it to the assistant.
+5. The assistant signs in, opens `More > Supabase`, enters the code under `Join Team`, and accepts.
+
+If your database was created before assistant invites existed, run:
+
+```text
+supabase/migrations/202606130001_assistant_invites.sql
+```
+
 ## Verification
 
 ```bash

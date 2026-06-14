@@ -11,13 +11,13 @@ export interface FieldSlot {
 }
 
 export const OFFENSE_SLOTS: FieldSlot[] = [
-  { code: '1', name: 'Left WR', shortName: 'LWR', unit: 'offense', ratingKey: 'WR', x: 10, y: 72 },
-  { code: '2', name: 'Left Slot', shortName: 'LS', unit: 'offense', ratingKey: 'WR', x: 31, y: 64 },
-  { code: 'C', name: 'Center', shortName: 'C', unit: 'offense', ratingKey: 'C', x: 50, y: 74 },
-  { code: 'QB', name: 'Quarterback', shortName: 'QB', unit: 'offense', ratingKey: 'QB', x: 50, y: 55 },
-  { code: 'RB', name: 'Running Back', shortName: 'RB', unit: 'offense', ratingKey: 'RB', x: 50, y: 36 },
-  { code: '3', name: 'Right Slot', shortName: 'RS', unit: 'offense', ratingKey: 'WR', x: 69, y: 64 },
-  { code: '4', name: 'Right WR', shortName: 'RWR', unit: 'offense', ratingKey: 'WR', x: 90, y: 72 }
+  { code: '1', name: 'Left WR', shortName: 'LWR', unit: 'offense', ratingKey: 'WR', x: 11, y: 78 },
+  { code: '2', name: 'Left Slot', shortName: 'LS', unit: 'offense', ratingKey: 'WR', x: 28, y: 63 },
+  { code: 'C', name: 'Center', shortName: 'C', unit: 'offense', ratingKey: 'C', x: 50, y: 82 },
+  { code: 'QB', name: 'Quarterback', shortName: 'QB', unit: 'offense', ratingKey: 'QB', x: 50, y: 58 },
+  { code: 'RB', name: 'Running Back', shortName: 'RB', unit: 'offense', ratingKey: 'RB', x: 50, y: 34 },
+  { code: '3', name: 'Right Slot', shortName: 'RS', unit: 'offense', ratingKey: 'WR', x: 72, y: 63 },
+  { code: '4', name: 'Right WR', shortName: 'RWR', unit: 'offense', ratingKey: 'WR', x: 89, y: 78 }
 ]
 
 export const DEFENSE_SLOTS: FieldSlot[] = [

@@ -1,5 +1,5 @@
-import CoachApp from '@/components/CoachApp'
+import { redirect } from 'next/navigation'
 
 export default function Home() {
-  return <CoachApp />
+  redirect('/planning')
 }

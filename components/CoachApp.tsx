@@ -44,7 +44,7 @@ import {
   subscribeToSupabaseState,
   type SupabaseMembership
 } from '@/lib/supabase/app-state'
-import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
+import { areAssistantInvitesEnabled, getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Game, LineupTemplate, Player, PlaybookPlay, PracticePlan, PracticeTemplate, Unit } from '@/lib/types'
 
 type View = 'dashboard' | 'roster' | 'planner' | 'gameday' | 'more'
@@ -173,6 +173,7 @@ export default function CoachApp() {
   const [syncMembership, setSyncMembership] = useState<SupabaseMembership | null>(null)
   const [syncReady, setSyncReady] = useState(false)
   const [authForm, setAuthForm] = useState({ email: '', password: '' })
+  const assistantInvitesEnabled = areAssistantInvitesEnabled()
   const [assistantInviteForm, setAssistantInviteForm] = useState({
     email: '',
     canAddNotes: true,
@@ -1668,6 +1669,7 @@ export default function CoachApp() {
               appSettings={appSettings}
               updateAppSettings={updateAppSettings}
               supabaseConfigured={isSupabaseConfigured()}
+              assistantInvitesEnabled={assistantInvitesEnabled}
               syncStatus={syncStatus}
               syncMessage={syncMessage}
               syncUserEmail={syncUserEmail}
@@ -2940,6 +2942,7 @@ function MoreView({
   appSettings,
   updateAppSettings,
   supabaseConfigured,
+  assistantInvitesEnabled,
   syncStatus,
   syncMessage,
   syncUserEmail,
@@ -2998,6 +3001,7 @@ function MoreView({
   appSettings: AppSettings
   updateAppSettings: (updates: Partial<AppSettings>) => void
   supabaseConfigured: boolean
+  assistantInvitesEnabled: boolean
   syncStatus: SyncStatus
   syncMessage: string
   syncUserEmail: string
@@ -3605,7 +3609,7 @@ function MoreView({
               </div>
             )}
 
-            {supabaseConfigured && syncUserEmail && (
+            {assistantInvitesEnabled && supabaseConfigured && syncUserEmail && (
               <div className="mt-4 space-y-3 border-t border-[#d8ded5] pt-3">
                 {syncMembership?.role === 'head_coach' && (
                   <div className="space-y-2">

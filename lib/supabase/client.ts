@@ -10,6 +10,10 @@ export function isSupabaseConfigured() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && getSupabaseKey())
 }
 
+export function areAssistantInvitesEnabled() {
+  return process.env.NEXT_PUBLIC_ENABLE_ASSISTANT_INVITES === 'true'
+}
+
 export function getSupabaseClient() {
   if (!isSupabaseConfigured()) {
     throw new Error('Supabase is not configured')

@@ -22,6 +22,7 @@ The app works local-first with `localStorage` when Supabase is not configured.
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
+NEXT_PUBLIC_ENABLE_ASSISTANT_INVITES=false
 ```
 
 4. Restart the dev server.
@@ -29,7 +30,13 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 
 ## Assistant Coaches
 
-Head coaches can create assistant invite codes from `More > Supabase`.
+Assistant invites are optional and hidden by default. Enable them by setting:
+
+```env
+NEXT_PUBLIC_ENABLE_ASSISTANT_INVITES=true
+```
+
+Head coaches can then create assistant invite codes from `More > Supabase`.
 
 1. Sign in as the head coach.
 2. Enter the assistant email.

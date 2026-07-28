@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minus, Plus, X } from 'lucide-react'
 import { PLAYBOOK_SLOTS } from '@/lib/playbook'
+import { LINE_OF_SCRIMMAGE } from '@/lib/positions'
+import { snapToField, type SnapResult } from '@/lib/snapping'
 import type { FieldPoint, PlayFootball, PlayRoute, SlotPositions } from '@/lib/types'
 
 /** The field is twice as wide as it is tall; drawing coordinates are percentages. */
@@ -86,6 +88,7 @@ export default function PlaybookField({
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
   const [draft, setDraft] = useState<FieldPoint[] | null>(null)
   const [draggingSlot, setDraggingSlot] = useState<string | null>(null)
+  const [snap, setSnap] = useState<SnapResult | null>(null)
   const [landscape, setLandscape] = useState(false)
   const [fullscreenOff, setFullscreenOff] = useState(false)
 
@@ -296,7 +299,16 @@ export default function PlaybookField({
           transformOrigin: '0 0'
         }}
       >
-        <div className="absolute inset-x-0 top-1/2 h-px bg-[#f6f2df]/60" />
+        <div
+          className={`absolute inset-x-0 h-px ${snap?.onLine ? 'bg-[#f7c948] shadow-[0_0_6px_#f7c948]' : 'bg-[#f6f2df]/70'}`}
+          style={{ top: `${LINE_OF_SCRIMMAGE}%` }}
+        />
+        {snap?.alignedX !== undefined && (
+          <div className="absolute inset-y-0 w-px bg-[#f7c948]/80" style={{ left: `${snap.alignedX}%` }} />
+        )}
+        {snap?.alignedY !== undefined && (
+          <div className="absolute inset-x-0 h-px bg-[#f7c948]/80" style={{ top: `${snap.alignedY}%` }} />
+        )}
 
         <svg viewBox={`0 0 ${worldWidth} ${worldHeight}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
           {routes.map((route) => (
@@ -382,16 +394,25 @@ export default function PlaybookField({
                   capturePointer(event.currentTarget as HTMLElement, event.pointerId)
                 }
 
-                onMovePosition(drag.slotCode, {
-                  x: clamp(drag.originX + (deltaX / (rect.width * view.scale)) * 100, 3, 97),
-                  y: clamp(drag.originY + (deltaY / (rect.height * view.scale)) * 100, 5, 95)
-                })
+                const others = PLAYBOOK_SLOTS.filter((item) => item.code !== drag.slotCode).map(
+                  (item) => positions[item.code] || { x: item.x, y: item.y }
+                )
+                const snapped = snapToField(
+                  {
+                    x: drag.originX + (deltaX / (rect.width * view.scale)) * 100,
+                    y: drag.originY + (deltaY / (rect.height * view.scale)) * 100
+                  },
+                  others
+                )
+                setSnap(snapped)
+                onMovePosition(drag.slotCode, { x: snapped.x, y: snapped.y })
               }}
               onPointerUp={(event) => {
                 if (!slotDragRef.current) return
                 event.stopPropagation()
                 slotDragRef.current = null
                 setDraggingSlot(null)
+                setSnap(null)
               }}
             >
               <div

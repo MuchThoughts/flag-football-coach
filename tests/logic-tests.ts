@@ -12,7 +12,8 @@ import {
   filterPlays,
   getFormationPosition
 } from '../lib/playbook'
-import { OFFENSE_SLOTS, DEFENSE_SLOTS, getSlotPosition, slotPositionKey } from '../lib/positions'
+import { OFFENSE_SLOTS, DEFENSE_SLOTS, getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey } from '../lib/positions'
+import { snapToField } from '../lib/snapping'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
@@ -351,9 +352,9 @@ assert.equal(
 assert.deepEqual(Object.keys(defaultFormationPositions()).sort(), ['1', '2', '3', '4', 'C', 'QB', 'RB'])
 
 const trips = initialAppState.formations.find((formation) => formation.name === 'Trips Right')!
-assert.deepEqual(getFormationPosition('3', trips), { x: 76, y: 70 })
+assert.deepEqual(getFormationPosition('3', trips), { x: 76, y: 52 })
 // A position the formation does not place falls back to its default spot.
-assert.deepEqual(getFormationPosition('QB', { ...trips, positions: {} }), { x: 50, y: 58 })
+assert.deepEqual(getFormationPosition('QB', { ...trips, positions: {} }), { x: 50, y: 72 })
 
 const catalog: PlaybookPlay[] = [
   { ...initialAppState.plays[0], id: 'p1', name: 'Sweep Right', type: 'run' as const, area: 'sidelines' as const, formationId: 'formation-balanced', notes: 'edge crashes' },
@@ -431,5 +432,74 @@ assert.equal(
 const stablePlaybook = migrateAppState(initialAppState)
 assert.deepEqual(stablePlaybook.plays.map((play) => play.id), initialAppState.plays.map((play) => play.id))
 assert.deepEqual(stablePlaybook.formations.map((f) => f.id), initialAppState.formations.map((f) => f.id))
+
+// ---- Snapping ----
+// Nothing nearby: fall back to the grid, which is square on a field twice as wide.
+assert.deepEqual(snapToField({ x: 31.2, y: 33.4 }, []), { x: 32, y: 32, onLine: false })
+assert.deepEqual(snapToField({ x: 30.9, y: 38.4 }, []), { x: 30, y: 40, onLine: false })
+
+// The line of scrimmage pulls from further away than the grid.
+const nearLine = snapToField({ x: 40, y: LINE_OF_SCRIMMAGE - 6 }, [])
+assert.equal(nearLine.y, LINE_OF_SCRIMMAGE)
+assert.equal(nearLine.onLine, true)
+const offLine = snapToField({ x: 40, y: LINE_OF_SCRIMMAGE - 9 }, [])
+assert.notEqual(offLine.y, LINE_OF_SCRIMMAGE)
+assert.equal(offLine.onLine, false)
+
+// A neighbour close by wins over the grid, and reports a guide to draw.
+const alignedToNeighbour = snapToField({ x: 26.4, y: 30.5 }, [{ x: 27, y: 88 }])
+assert.equal(alignedToNeighbour.x, 27)
+assert.equal(alignedToNeighbour.alignedX, 27)
+// Without that neighbour the same drag would land on the grid instead.
+assert.equal(snapToField({ x: 26.4, y: 30.5 }, []).x, 26)
+const alignedRow = snapToField({ x: 60, y: 30.5 }, [{ x: 8, y: 33 }])
+assert.equal(alignedRow.y, 33)
+assert.equal(alignedRow.alignedY, 33)
+
+// The line beats neighbour alignment when both are in range.
+const lineWins = snapToField({ x: 60, y: LINE_OF_SCRIMMAGE + 3 }, [{ x: 8, y: LINE_OF_SCRIMMAGE + 4 }])
+assert.equal(lineWins.y, LINE_OF_SCRIMMAGE)
+assert.equal(lineWins.alignedY, undefined)
+
+// A far-away neighbour is ignored.
+assert.equal(snapToField({ x: 50, y: 20 }, [{ x: 62, y: 20 }]).x, 50)
+
+// Markers stay on the field, and a guide is dropped when clamping moves them off it.
+const cornered = snapToField({ x: -20, y: 130 }, [{ x: -18, y: 128 }])
+assert.equal(cornered.x >= 4 && cornered.x <= 96, true)
+assert.equal(cornered.y >= 8 && cornered.y <= 92, true)
+assert.equal(cornered.alignedX, undefined)
+
+// Default spots are all snap-clean, so nothing jumps the first time it is dragged.
+assert.equal(
+  [...OFFENSE_SLOTS, ...DEFENSE_SLOTS].every((slot) => {
+    const snapped = snapToField({ x: slot.x, y: slot.y }, [])
+    return snapped.x === slot.x && snapped.y === slot.y
+  }),
+  true
+)
+
+// ---- Field layout migration ----
+const legacyLayout = migrateAppState({
+  ...initialAppState,
+  slotPositions: {
+    'offense:QB': { x: 50, y: 58 },
+    'offense:RB': { x: 22, y: 40 },
+    'defense:S': { x: 50, y: 78 }
+  },
+  formations: [
+    { ...initialAppState.formations[0], positions: { '1': { x: 11, y: 78 }, QB: { x: 50, y: 58 } } },
+    { ...initialAppState.formations[1], id: 'hand-made', positions: { QB: { x: 20, y: 20 } } }
+  ]
+} as unknown as typeof initialAppState)
+
+// Spots left on the old defaults are dropped so the new ones apply.
+assert.equal(legacyLayout.slotPositions['offense:QB'], undefined)
+assert.equal(legacyLayout.slotPositions['defense:S'], undefined)
+// A spot the coach dragged is kept.
+assert.deepEqual(legacyLayout.slotPositions['offense:RB'], { x: 22, y: 40 })
+// An untouched formation is relaid out; a hand-made one is not.
+assert.deepEqual(legacyLayout.formations[0].positions, defaultFormationPositions())
+assert.deepEqual(legacyLayout.formations[1].positions, { QB: { x: 20, y: 20 } })
 
 console.log('logic tests passed')

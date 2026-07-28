@@ -160,10 +160,10 @@ export const initialAppState: AppState = {
       area: 'sidelines',
       notes: 'RB motion right, 3 clears, 4 stalks space. Good early-down call when the edge defender crashes.',
       routes: [
-        { id: 'route-sweep-rb', points: [{ x: 50, y: 34 }, { x: 66, y: 40 }, { x: 82, y: 52 }], style: 'solid' },
-        { id: 'route-sweep-3', points: [{ x: 72, y: 63 }, { x: 74, y: 30 }], style: 'solid' }
+        { id: 'route-sweep-rb', points: [{ x: 36, y: 80 }, { x: 54, y: 74 }, { x: 70, y: 64 }, { x: 80, y: 54 }], style: 'solid' },
+        { id: 'route-sweep-3', points: [{ x: 73, y: 52 }, { x: 75, y: 28 }], style: 'solid' }
       ],
-      footballs: [{ id: 'ball-sweep', x: 56, y: 40 }],
+      footballs: [{ id: 'ball-sweep', x: 44, y: 76 }],
       createdAt: seedTimestamp,
       updatedAt: seedTimestamp
     },
@@ -176,8 +176,8 @@ export const initialAppState: AppState = {
       area: 'middle',
       notes: '2 shallow, 3 dig, 4 clear, RB check release. Use when the QB has time and the middle is open.',
       routes: [
-        { id: 'route-cross-2', points: [{ x: 62, y: 63 }, { x: 46, y: 46 }, { x: 30, y: 44 }], style: 'solid' },
-        { id: 'route-cross-qb', points: [{ x: 50, y: 58 }, { x: 34, y: 45 }], style: 'dashed' }
+        { id: 'route-cross-2', points: [{ x: 62, y: 52 }, { x: 48, y: 38 }, { x: 32, y: 34 }], style: 'solid' },
+        { id: 'route-cross-qb', points: [{ x: 50, y: 72 }, { x: 36, y: 36 }], style: 'dashed' }
       ],
       footballs: [],
       createdAt: seedTimestamp,
@@ -199,10 +199,9 @@ export const initialAppState: AppState = {
       name: 'Trips Right',
       positions: {
         ...defaultFormationPositions(),
-        '1': { x: 12, y: 66 },
-        '2': { x: 62, y: 63 },
-        '3': { x: 76, y: 70 },
-        '4': { x: 89, y: 78 }
+        '2': { x: 62, y: 52 },
+        '3': { x: 76, y: 52 },
+        '4': { x: 92, y: 52 }
       },
       createdAt: seedTimestamp,
       updatedAt: seedTimestamp

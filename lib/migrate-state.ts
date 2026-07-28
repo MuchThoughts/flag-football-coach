@@ -1,4 +1,4 @@
-import type { AppState, Drive, Formation, Game, PlayArea, PlaybookPlay, Player, PlayType } from './types'
+import type { AppState, Drive, Formation, Game, PlayArea, PlaybookPlay, Player, PlayType, SlotPositions } from './types'
 import { defaultFormationPositions } from './playbook'
 import { initialAppState, samplePlayers } from './sample-data'
 
@@ -119,6 +119,65 @@ function replaceDemoRoster(state: AppState): AppState {
   }
 }
 
+/** Spots authored for the old, nearly square field. */
+const legacyDefaultPositions: Record<string, SlotPositions> = {
+  offense: {
+    '1': { x: 11, y: 78 },
+    '2': { x: 28, y: 63 },
+    C: { x: 50, y: 82 },
+    QB: { x: 50, y: 58 },
+    RB: { x: 50, y: 34 },
+    '3': { x: 72, y: 63 },
+    '4': { x: 89, y: 78 }
+  },
+  defense: {
+    LCB: { x: 12, y: 28 },
+    LE: { x: 34, y: 38 },
+    R: { x: 50, y: 18 },
+    RE: { x: 66, y: 38 },
+    RCB: { x: 88, y: 28 },
+    MLB: { x: 50, y: 52 },
+    S: { x: 50, y: 78 }
+  }
+}
+
+function samePosition(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01
+}
+
+/** True when every placed marker still sits on an old default spot. */
+function matchesLegacyLayout(positions: SlotPositions, unit: 'offense' | 'defense') {
+  const defaults = legacyDefaultPositions[unit]
+  const placed = Object.keys(positions)
+  return placed.length > 0 && placed.every((code) => defaults[code] && samePosition(positions[code], defaults[code]))
+}
+
+/**
+ * The field went from nearly square to twice as wide, so spots laid out against
+ * the old shape no longer read right. Untouched layouts move to the new
+ * defaults; anything the coach dragged themselves is left alone.
+ */
+function migrateFieldLayouts(state: AppState): AppState {
+  const slotPositions = Object.entries(state.slotPositions || {}).reduce<SlotPositions>((next, [key, position]) => {
+    const [unit, code] = key.split(':')
+    const legacy = legacyDefaultPositions[unit]?.[code]
+    if (!legacy || !samePosition(position, legacy)) {
+      next[key] = position
+    }
+    return next
+  }, {})
+
+  return {
+    ...state,
+    slotPositions,
+    formations: (state.formations || []).map((formation) =>
+      matchesLegacyLayout(formation.positions, 'offense')
+        ? { ...formation, positions: defaultFormationPositions() }
+        : formation
+    )
+  }
+}
+
 interface LegacyPlay {
   id: string
   teamId: string
@@ -209,10 +268,11 @@ export function migrateAppState(saved: AppState): AppState {
     appSettings: saved.appSettings || initialAppState.appSettings
   })
 
-  const playbook = migratePlaybook(state)
+  const relaidOut = migrateFieldLayouts(state)
+  const playbook = migratePlaybook(relaidOut)
 
   return {
-    ...state,
+    ...relaidOut,
     players: state.players.map(normalizePlayer),
     plays: playbook.plays,
     formations: playbook.formations

@@ -41,7 +41,8 @@ import {
   type PlayFilters
 } from '@/lib/playbook'
 import PlaybookField from '@/components/PlaybookField'
-import { getSlotPosition, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
+import { getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
+import { snapToField, type SnapResult } from '@/lib/snapping'
 import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
 import type {
   AppSettings,
@@ -2713,10 +2714,6 @@ const markerDragThreshold = 8
 const minZoom = 1
 const maxZoom = 2.5
 
-function clampPercent(value: number, edge: number) {
-  return Math.min(100 - edge, Math.max(edge, value))
-}
-
 function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
@@ -2753,13 +2750,12 @@ function FormationBoard({
   compact?: boolean
 }) {
   const slots = SLOTS_BY_UNIT[drive.unit]
-  const boardHeight = compact ? 'h-[326px]' : 'h-[410px] sm:h-[460px]'
-  const markerWidth = compact ? 'w-[72px] sm:w-28' : 'w-[76px] sm:w-28'
-  const markerMinHeight = compact ? 'min-h-[58px] p-1' : 'min-h-[66px] p-1.5'
+  const markerSize = compact ? 'h-[34px] w-[34px]' : 'h-[38px] w-[38px]'
 
   const fieldRef = useRef<HTMLDivElement | null>(null)
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
   const [draggingSlot, setDraggingSlot] = useState<string | null>(null)
+  const [snap, setSnap] = useState<SnapResult | null>(null)
   const dragRef = useRef<{ slotCode: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
   const pinchRef = useRef(new Map<number, { x: number; y: number }>())
   const lastPinchRef = useRef<{ distance: number; centerX: number; centerY: number } | null>(null)
@@ -2844,16 +2840,25 @@ function FormationBoard({
     }
 
     const rect = field.getBoundingClientRect()
-    moveSlot(drive.unit, drag.slotCode, {
-      x: clampPercent(drag.originX + (deltaX / rect.width) * 100, 6),
-      y: clampPercent(drag.originY + (deltaY / rect.height) * 100, 8)
-    })
+    const others = slots
+      .filter((item) => item.code !== drag.slotCode)
+      .map((item) => getSlotPosition(item, slotPositions))
+    const snapped = snapToField(
+      {
+        x: drag.originX + (deltaX / (rect.width * view.scale)) * 100,
+        y: drag.originY + (deltaY / (rect.height * view.scale)) * 100
+      },
+      others
+    )
+    setSnap(snapped)
+    moveSlot(drive.unit, drag.slotCode, { x: snapped.x, y: snapped.y })
   }
 
   function endMarkerDrag(slotCode: string) {
     const drag = dragRef.current
     dragRef.current = null
     setDraggingSlot(null)
+    setSnap(null)
 
     // A press that never moved is a tap: pick who plays this position.
     if (!drag || drag.moved) return
@@ -2868,7 +2873,7 @@ function FormationBoard({
     <div className="relative">
       <div
         ref={fieldRef}
-        className={`field-yardlines relative mt-3 ${boardHeight} touch-pan-y overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field`}
+        className="field-yardlines relative mt-3 aspect-[2/1] w-full touch-pan-y overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field"
         onPointerDown={handleFieldPointerDown}
         onPointerMove={handleFieldPointerMove}
         onPointerUp={handleFieldPointerUp}
@@ -2882,8 +2887,19 @@ function FormationBoard({
             transition: draggingSlot || lastPinchRef.current ? 'none' : 'transform 150ms ease-out'
           }}
         >
-          <div className="absolute inset-x-0 top-1/2 h-px bg-[#f6f2df]/70" />
-          <div className="absolute left-3 top-3 rounded-full bg-black/20 px-2 py-1 text-xs font-black uppercase text-white">{drive.unit}</div>
+          <div
+            className={`absolute inset-x-0 h-px ${snap?.onLine ? 'bg-[#f7c948] shadow-[0_0_6px_#f7c948]' : 'bg-[#f6f2df]/70'}`}
+            style={{ top: `${LINE_OF_SCRIMMAGE}%` }}
+          />
+          {snap?.alignedX !== undefined && (
+            <div className="absolute inset-y-0 w-px bg-[#f7c948]/80" style={{ left: `${snap.alignedX}%` }} />
+          )}
+          {snap?.alignedY !== undefined && (
+            <div className="absolute inset-x-0 h-px bg-[#f7c948]/80" style={{ top: `${snap.alignedY}%` }} />
+          )}
+          <div className="absolute left-2 top-2 rounded-full bg-black/25 px-2 py-0.5 text-[10px] font-black uppercase text-white">
+            {drive.unit}
+          </div>
           {slots.map((slot) => {
             const player = players.find((item) => item.id === drive.assignments[slot.code])
             const backup = players.find((item) => item.id === drive.backups[slot.code])
@@ -2893,7 +2909,7 @@ function FormationBoard({
             return (
               <div
                 key={slot.code}
-                className={`absolute ${markerWidth} -translate-x-1/2 -translate-y-1/2 ${isDragging ? 'z-20' : 'z-10'}`}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 ${isDragging ? 'z-20' : 'z-10'}`}
                 style={{ left: `${position.x}%`, top: `${position.y}%`, touchAction: interactive ? 'none' : undefined }}
                 onDragOver={(event) => {
                   if (interactive) event.preventDefault()
@@ -2921,21 +2937,28 @@ function FormationBoard({
                     event.preventDefault()
                     if (event.detail === 0 && interactive && onPickSlot) onPickSlot(slot.code)
                   }}
-                  className={`${markerMinHeight} w-full select-none rounded-lg border-2 text-center shadow-sm ${
+                  className={`relative flex ${markerSize} select-none flex-col items-center justify-center rounded-full border-2 shadow-sm ${
                     isOut
                       ? 'border-[#8f2e20] bg-[#c2412d] text-white'
                       : player
                         ? 'border-[#10201a] bg-white text-[#10201a]'
-                        : 'border-dashed border-[#f6f2df] bg-white/16 text-white'
+                        : 'border-dashed border-[#f6f2df] bg-white/20 text-white'
                   } ${interactive ? 'cursor-pointer' : 'cursor-default'} ${isDragging ? 'scale-110 shadow-lg ring-2 ring-[#f7c948]' : ''}`}
                 >
-                  <p className="text-[11px] font-black uppercase opacity-80">{slot.shortName}</p>
-                  <p className="mt-1 truncate text-sm font-black leading-tight">{player ? player.firstName : 'Open'}</p>
-                  {isOut && <p className="text-[10px] font-black uppercase tracking-wide text-white/90">Out</p>}
+                  <span className={`text-[7px] font-black uppercase leading-none ${isOut ? 'text-white/80' : 'text-[#53665c]'}`}>
+                    {slot.shortName}
+                  </span>
+                  <span
+                    className={`mt-0.5 w-full truncate text-center text-[8px] font-black leading-none tracking-tighter ${
+                      isOut ? 'line-through' : ''
+                    }`}
+                  >
+                    {player ? player.firstName : 'Open'}
+                  </span>
                   {backup && (
-                    <p className={`truncate text-[10px] italic leading-tight ${isOut ? 'text-white/80' : 'text-[#53665c]'}`}>
+                    <span className="absolute left-1/2 top-full mt-0.5 max-w-[62px] -translate-x-1/2 truncate rounded-full bg-[#10201a]/70 px-1 text-[8px] font-bold italic leading-tight text-white">
                       {backup.firstName}
-                    </p>
+                    </span>
                   )}
                 </button>
               </div>

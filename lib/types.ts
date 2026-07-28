@@ -26,8 +26,6 @@ export interface Player {
   id: string
   teamId: string
   firstName: string
-  lastName: string
-  jerseyNumber: string
   active: boolean
   offenseRatings: PlayerRatings
   defenseRatings: PlayerRatings
@@ -37,7 +35,6 @@ export interface Player {
 export interface Game {
   id: string
   teamId: string
-  opponent: string
   date: string
   location: string
   status: 'scheduled' | 'in_progress' | 'completed'

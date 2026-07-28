@@ -39,140 +39,35 @@ function withAssignments(drive: Drive, assignments: Record<string, string>): Dri
   }
 }
 
-export const samplePlayers: Player[] = [
-  {
-    id: 'p-jack',
-    teamId,
-    firstName: 'Jack',
-    lastName: 'Miller',
-    jerseyNumber: '7',
+const rosterNames = [
+  'Rhett',
+  'Mikey',
+  'Teddy',
+  'Dodger',
+  'Maddox',
+  'William',
+  'Grady',
+  'Locklan',
+  'Luther',
+  'Rhodes',
+  'Henry'
+]
+
+export function createPlayer(id: string, firstName: string, team = teamId): Player {
+  return {
+    id,
+    teamId: team,
+    firstName,
     active: true,
-    offenseRatings: { QB: 5, C: 2, WR: 4, RB: 3 },
-    defenseRatings: { R: 2, S: 4, MLB: 4, CB: 3, E: 3 },
-    notes: 'Calm huddle voice.'
-  },
-  {
-    id: 'p-sam',
-    teamId,
-    firstName: 'Sam',
-    lastName: 'Reed',
-    jerseyNumber: '12',
-    active: true,
-    offenseRatings: { QB: 2, C: 3, WR: 3, RB: 5 },
-    defenseRatings: { R: 4, S: 3, MLB: 3, CB: 3, E: 5 },
-    notes: 'Good edge discipline.'
-  },
-  {
-    id: 'p-eli',
-    teamId,
-    firstName: 'Eli',
-    lastName: 'Grant',
-    jerseyNumber: '4',
-    active: true,
-    offenseRatings: { QB: 3, C: 5, WR: 3, RB: 2 },
-    defenseRatings: { R: 2, S: 4, MLB: 5, CB: 3, E: 3 },
-    notes: 'Reliable snapper.'
-  },
-  {
-    id: 'p-noah',
-    teamId,
-    firstName: 'Noah',
-    lastName: 'King',
-    jerseyNumber: '18',
-    active: true,
-    offenseRatings: { QB: 1, C: 2, WR: 5, RB: 3 },
-    defenseRatings: { R: 3, S: 3, MLB: 2, CB: 5, E: 3 },
-    notes: 'Best deep route runner.'
-  },
-  {
-    id: 'p-ben',
-    teamId,
-    firstName: 'Ben',
-    lastName: 'Parker',
-    jerseyNumber: '22',
-    active: true,
-    offenseRatings: { QB: 2, C: 3, WR: 4, RB: 3 },
-    defenseRatings: { R: 3, S: 4, MLB: 3, CB: 4, E: 4 },
-    notes: ''
-  },
-  {
-    id: 'p-luke',
-    teamId,
-    firstName: 'Luke',
-    lastName: 'Hayes',
-    jerseyNumber: '9',
-    active: true,
-    offenseRatings: { QB: 3, C: 2, WR: 4, RB: 4 },
-    defenseRatings: { R: 5, S: 2, MLB: 3, CB: 3, E: 5 },
-    notes: 'Quick first step.'
-  },
-  {
-    id: 'p-mason',
-    teamId,
-    firstName: 'Mason',
-    lastName: 'Diaz',
-    jerseyNumber: '3',
-    active: true,
-    offenseRatings: { QB: 2, C: 2, WR: 5, RB: 3 },
-    defenseRatings: { R: 3, S: 5, MLB: 2, CB: 5, E: 2 },
-    notes: ''
-  },
-  {
-    id: 'p-max',
-    teamId,
-    firstName: 'Max',
-    lastName: 'Brown',
-    jerseyNumber: '11',
-    active: true,
-    offenseRatings: { QB: 1, C: 4, WR: 3, RB: 3 },
-    defenseRatings: { R: 5, S: 3, MLB: 4, CB: 2, E: 5 },
-    notes: 'Strong rusher.'
-  },
-  {
-    id: 'p-owen',
-    teamId,
-    firstName: 'Owen',
-    lastName: 'Scott',
-    jerseyNumber: '14',
-    active: true,
-    offenseRatings: { QB: 4, C: 2, WR: 3, RB: 4 },
-    defenseRatings: { R: 3, S: 4, MLB: 3, CB: 4, E: 3 },
-    notes: ''
-  },
-  {
-    id: 'p-ty',
-    teamId,
-    firstName: 'Ty',
-    lastName: 'Cole',
-    jerseyNumber: '5',
-    active: true,
-    offenseRatings: { QB: 2, C: 3, WR: 3, RB: 4 },
-    defenseRatings: { R: 4, S: 3, MLB: 4, CB: 3, E: 4 },
-    notes: ''
-  },
-  {
-    id: 'p-liam',
-    teamId,
-    firstName: 'Liam',
-    lastName: 'Young',
-    jerseyNumber: '20',
-    active: true,
-    offenseRatings: { QB: 1, C: 3, WR: 4, RB: 2 },
-    defenseRatings: { R: 2, S: 5, MLB: 3, CB: 4, E: 2 },
-    notes: ''
-  },
-  {
-    id: 'p-cal',
-    teamId,
-    firstName: 'Cal',
-    lastName: 'Evans',
-    jerseyNumber: '6',
-    active: true,
-    offenseRatings: { QB: 3, C: 4, WR: 2, RB: 3 },
-    defenseRatings: { R: 3, S: 2, MLB: 5, CB: 2, E: 4 },
+    offenseRatings: { QB: 3, C: 3, WR: 3, RB: 3 },
+    defenseRatings: { R: 3, S: 3, MLB: 3, CB: 3, E: 3 },
     notes: ''
   }
-]
+}
+
+export const samplePlayers: Player[] = rosterNames.map((firstName) =>
+  createPlayer(`p-${firstName.toLowerCase()}`, firstName)
+)
 
 export const initialAppState: AppState = {
   team: {
@@ -186,9 +81,8 @@ export const initialAppState: AppState = {
     {
       id: gameId,
       teamId,
-      opponent: 'Eagles',
-      date: '2026-09-12',
-      location: 'Field 3',
+      date: '',
+      location: '',
       status: 'scheduled',
       patternLength: 3
     }
@@ -196,49 +90,31 @@ export const initialAppState: AppState = {
   selectedGameId: gameId,
   drives: [
     withAssignments(createDrive('drive-off-1', 'offense', 1), {
-      QB: 'p-jack',
-      RB: 'p-sam',
-      C: 'p-eli',
-      '1': 'p-noah',
-      '2': 'p-ben',
-      '3': 'p-luke',
-      '4': 'p-mason'
+      QB: 'p-rhett',
+      RB: 'p-mikey',
+      C: 'p-teddy',
+      '1': 'p-dodger',
+      '2': 'p-maddox',
+      '3': 'p-william',
+      '4': 'p-grady'
     }),
     withAssignments(createDrive('drive-def-1', 'defense', 1), {
-      R: 'p-max',
-      MLB: 'p-jack',
-      S: 'p-eli',
-      LE: 'p-sam',
-      RE: 'p-ben',
-      LCB: 'p-noah',
-      RCB: 'p-mason'
+      R: 'p-locklan',
+      MLB: 'p-luther',
+      S: 'p-rhodes',
+      LE: 'p-henry',
+      RE: 'p-dodger',
+      LCB: 'p-maddox',
+      RCB: 'p-william'
     }),
-    withAssignments(createDrive('drive-off-2', 'offense', 2), {
-      QB: 'p-owen',
-      RB: 'p-ty',
-      C: 'p-cal',
-      '1': 'p-mason',
-      '2': 'p-noah',
-      '3': 'p-ben',
-      '4': 'p-luke'
-    }),
-    withAssignments(createDrive('drive-def-2', 'defense', 2), {
-      R: 'p-luke',
-      MLB: 'p-cal',
-      S: 'p-mason',
-      LE: 'p-max',
-      RE: 'p-ty',
-      LCB: 'p-ben',
-      RCB: 'p-owen'
-    }),
+    createDrive('drive-off-2', 'offense', 2),
+    createDrive('drive-def-2', 'defense', 2),
     createDrive('drive-off-3', 'offense', 3),
     createDrive('drive-def-3', 'defense', 3)
   ],
   selectedDriveId: 'drive-off-1',
   availabilityByGame: {
-    [gameId]: {
-      'p-liam': false
-    }
+    [gameId]: {}
   },
   practices: [
     {

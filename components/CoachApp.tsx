@@ -8,8 +8,12 @@ import {
   Cloud,
   LogIn,
   LogOut,
+  Plus,
+  RotateCcw,
   Save,
-  UserPlus
+  Trash2,
+  Undo2,
+  X
 } from 'lucide-react'
 import {
   appSettingsFromMembership,
@@ -22,14 +26,17 @@ import {
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import { autoFillDrive, computeUsage, getDriveWarnings, isPlayerAvailable } from '@/lib/fair-play'
 import { getGameSummary } from '@/lib/game-summary'
+import { migrateAppState } from '@/lib/migrate-state'
 import { SLOTS_BY_UNIT } from '@/lib/positions'
-import { createDrive, initialAppState } from '@/lib/sample-data'
-import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Game, Player, Unit } from '@/lib/types'
+import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
+import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Player, Unit } from '@/lib/types'
 
 type Workflow = 'planning' | 'gameday'
 type SyncStatus = 'local' | 'signed_out' | 'loading' | 'synced' | 'saving' | 'error'
+type ClearedSlot = { driveId: string; slotCode: string }
 
-const storageKey = 'flag-football-coach:v2'
+const storageKey = 'flag-football-coach:v3'
+const legacyStorageKeys = ['flag-football-coach:v2', 'flag-football-coach:v1']
 const resultOptions: Array<Exclude<DriveResult, ''>> = ['TD', 'Stop', 'Turnover', 'Extra Point', 'Punt', 'End Half', 'End Game', 'TD Allowed']
 
 function uid(prefix: string) {
@@ -51,10 +58,6 @@ function emptyNote(): DriveNote {
   }
 }
 
-function fullName(player: Player) {
-  return `${player.firstName} ${player.lastName}`.trim()
-}
-
 function driveLabel(drive: Drive) {
   return `${drive.unit === 'offense' ? 'OFF' : 'DEF'} ${drive.driveNumber}`
 }
@@ -67,11 +70,6 @@ function shortResult(result: DriveResult) {
   if (!result) return 'Open'
   if (result === 'TD Allowed') return 'Allowed'
   return result
-}
-
-function playerInitials(player?: Player) {
-  if (!player) return ''
-  return `${player.firstName[0] || ''}${player.lastName[0] || ''}`.toUpperCase()
 }
 
 function workflowFromPath(pathname: string): Workflow {
@@ -99,7 +97,6 @@ export default function CoachApp() {
   const [loaded, setLoaded] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [draggingPlayerId, setDraggingPlayerId] = useState<string | null>(null)
-  const [newPlayer, setNewPlayer] = useState({ firstName: '', lastName: '', jerseyNumber: '' })
   const [gameNoteDraft, setGameNoteDraft] = useState('')
   const [authForm, setAuthForm] = useState({ email: '', password: '' })
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(isSupabaseConfigured() ? 'loading' : 'local')
@@ -111,6 +108,7 @@ export default function CoachApp() {
   const [syncReady, setSyncReady] = useState(false)
   const saveTimerRef = useRef<number | null>(null)
   const applyingRemoteStateRef = useRef(false)
+  const clearedSlotsRef = useRef(new Map<string, ClearedSlot[]>())
 
   const selectedGame = games.find((game) => game.id === selectedGameId) || games[0]
   const gameDrives = drives
@@ -178,7 +176,8 @@ export default function CoachApp() {
     }
   }
 
-  function applyAppState(saved: AppState, membership = syncMembership) {
+  function applyAppState(incoming: AppState, membership = syncMembership) {
+    const saved = migrateAppState(incoming)
     setTeam(saved.team)
     setPlayers(saved.players)
     setGames(saved.games)
@@ -186,11 +185,11 @@ export default function CoachApp() {
     setDrives(saved.drives)
     setSelectedDriveId(saved.selectedDriveId)
     setAvailabilityByGame(saved.availabilityByGame)
-    setPractices(saved.practices || [])
-    setPracticeTemplates(saved.practiceTemplates || initialAppState.practiceTemplates)
-    setPlays(saved.plays || [])
-    setLineupTemplates(saved.lineupTemplates || [])
-    setAppSettings(membership ? appSettingsFromMembership(membership, saved.appSettings || initialAppState.appSettings) : saved.appSettings || initialAppState.appSettings)
+    setPractices(saved.practices)
+    setPracticeTemplates(saved.practiceTemplates)
+    setPlays(saved.plays)
+    setLineupTemplates(saved.lineupTemplates)
+    setAppSettings(membership ? appSettingsFromMembership(membership, saved.appSettings) : saved.appSettings)
   }
 
   async function hydrateSupabaseSession(userId: string, userEmail: string, seedState: AppState) {
@@ -220,7 +219,9 @@ export default function CoachApp() {
   }
 
   useEffect(() => {
-    const raw = window.localStorage.getItem(storageKey) || window.localStorage.getItem('flag-football-coach:v1')
+    const raw =
+      window.localStorage.getItem(storageKey) ||
+      legacyStorageKeys.map((key) => window.localStorage.getItem(key)).find(Boolean)
     if (raw) {
       try {
         applyAppState(JSON.parse(raw) as AppState, null)
@@ -330,6 +331,7 @@ export default function CoachApp() {
     }))
 
     if (!available) {
+      const clearedSlots: ClearedSlot[] = []
       setDrives((items) =>
         items.map((drive) => {
           if (drive.gameId !== selectedGame.id || drive.status === 'completed') return drive
@@ -338,31 +340,23 @@ export default function CoachApp() {
           Object.keys(assignments).forEach((slotCode) => {
             if (assignments[slotCode] === playerId) {
               assignments[slotCode] = null
+              clearedSlots.push({ driveId: drive.id, slotCode })
               changed = true
             }
           })
           return changed ? { ...drive, assignments } : drive
         })
       )
+      clearedSlotsRef.current.set(playerId, clearedSlots)
       if (selectedPlayerId === playerId) setSelectedPlayerId(null)
     }
   }
 
-  function addPlayer() {
-    const firstName = newPlayer.firstName.trim()
+  function addPlayer(name: string) {
+    const firstName = name.trim()
     if (!firstName) return
 
-    const player: Player = {
-      id: uid('player'),
-      teamId: team.id,
-      firstName,
-      lastName: newPlayer.lastName.trim(),
-      jerseyNumber: newPlayer.jerseyNumber.trim(),
-      active: true,
-      offenseRatings: { QB: 3, C: 3, WR: 3, RB: 3 },
-      defenseRatings: { R: 3, S: 3, MLB: 3, CB: 3, E: 3 },
-      notes: ''
-    }
+    const player = createPlayer(uid('player'), firstName, team.id)
 
     setPlayers((items) => [...items, player])
     setAvailabilityByGame((current) =>
@@ -371,7 +365,63 @@ export default function CoachApp() {
         return next
       }, { ...current })
     )
-    setNewPlayer({ firstName: '', lastName: '', jerseyNumber: '' })
+  }
+
+  /** Puts players back on the list, and back into any lineup slot that is still open. */
+  function restorePlayers(playerIds: string[]) {
+    if (!selectedGame || playerIds.length === 0) return
+    setAvailabilityByGame((current) => ({
+      ...current,
+      [selectedGame.id]: playerIds.reduce<Record<string, boolean>>(
+        (next, playerId) => {
+          next[playerId] = true
+          return next
+        },
+        { ...(current[selectedGame.id] || {}) }
+      )
+    }))
+
+    const restoreBySlot = new Map<string, string>()
+    playerIds.forEach((playerId) => {
+      clearedSlotsRef.current.get(playerId)?.forEach((slot) => {
+        const key = `${slot.driveId}:${slot.slotCode}`
+        if (!restoreBySlot.has(key)) restoreBySlot.set(key, playerId)
+      })
+      clearedSlotsRef.current.delete(playerId)
+    })
+
+    if (restoreBySlot.size === 0) return
+
+    setDrives((items) =>
+      items.map((drive) => {
+        if (drive.status === 'completed') return drive
+        const assignments = { ...drive.assignments }
+        let changed = false
+        Object.keys(assignments).forEach((slotCode) => {
+          const playerId = restoreBySlot.get(`${drive.id}:${slotCode}`)
+          if (playerId && !assignments[slotCode]) {
+            assignments[slotCode] = playerId
+            changed = true
+          }
+        })
+        return changed ? { ...drive, assignments } : drive
+      })
+    )
+  }
+
+  /** Clears results and notes but keeps the lineups, so strategy carries into the next game. */
+  function startNewGame() {
+    if (!selectedGame) return
+    setDrives((items) =>
+      items.map((drive) =>
+        drive.gameId === selectedGame.id
+          ? { ...drive, result: '', status: 'planned', notes: emptyNote(), startedAt: undefined, endedAt: undefined }
+          : drive
+      )
+    )
+    restorePlayers(activePlayers.map((player) => player.id))
+    setSelectedDriveId(gameDrives[0]?.id || selectedDriveId)
+    setGameNoteDraft('')
   }
 
   function addDrive(unit: Unit) {
@@ -576,10 +626,7 @@ export default function CoachApp() {
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-3 py-3 sm:px-5">
         <AppHeader
           teamName={team.name}
-          game={selectedGame}
-          games={games}
-          selectedGameId={selectedGameId}
-          setSelectedGameId={setSelectedGameId}
+          readyCount={availablePlayers.length}
           workflow={workflow}
           syncStatus={syncStatus}
           syncMessage={syncMessage}
@@ -595,13 +642,10 @@ export default function CoachApp() {
 
         {workflow === 'planning' ? (
           <PlanningPage
-            players={activePlayers}
             availablePlayers={availablePlayers}
             unavailablePlayers={unavailablePlayers}
-            availability={availability}
-            setPlayerAvailable={setPlayerAvailable}
-            newPlayer={newPlayer}
-            setNewPlayer={setNewPlayer}
+            removePlayer={(playerId) => setPlayerAvailable(playerId, false)}
+            restorePlayers={restorePlayers}
             addPlayer={addPlayer}
             gameDrives={gameDrives}
             selectedDrive={selectedDrive}
@@ -634,6 +678,7 @@ export default function CoachApp() {
             gameNoteDraft={gameNoteDraft}
             updateDriveNote={updateDriveNote}
             recordDriveResult={recordDriveResult}
+            startNewGame={startNewGame}
           />
         )}
       </div>
@@ -650,10 +695,7 @@ export default function CoachApp() {
 
 function AppHeader({
   teamName,
-  game,
-  games,
-  selectedGameId,
-  setSelectedGameId,
+  readyCount,
   workflow,
   syncStatus,
   syncMessage,
@@ -667,10 +709,7 @@ function AppHeader({
   syncBusy
 }: {
   teamName: string
-  game?: Game
-  games: Game[]
-  selectedGameId: string
-  setSelectedGameId: (id: string) => void
+  readyCount: number
   workflow: Workflow
   syncStatus: SyncStatus
   syncMessage: string
@@ -698,7 +737,9 @@ function AppHeader({
         <div className="min-w-0">
           <p className="text-xs font-black uppercase text-[#53665c]">{workflow}</p>
           <h1 className="truncate font-display text-2xl font-black">{teamName}</h1>
-          <p className="truncate text-sm font-bold text-[#53665c]">vs {game?.opponent || 'Opponent'} · {game?.date || 'No date'}</p>
+          <p className="truncate text-sm font-bold text-[#53665c]">
+            {readyCount} player{readyCount === 1 ? '' : 's'} on the list
+          </p>
         </div>
         <details className="shrink-0">
           <summary className={`flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-xs font-black uppercase ${syncTone}`}>
@@ -749,32 +790,15 @@ function AppHeader({
           </div>
         </details>
       </div>
-
-      <div className="mt-3">
-        <select
-          value={selectedGameId}
-          onChange={(event) => setSelectedGameId(event.target.value)}
-          className="w-full min-w-0 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black outline-none"
-        >
-          {games.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.opponent}
-            </option>
-          ))}
-        </select>
-      </div>
     </header>
   )
 }
 
 function PlanningPage({
-  players,
   availablePlayers,
   unavailablePlayers,
-  availability,
-  setPlayerAvailable,
-  newPlayer,
-  setNewPlayer,
+  removePlayer,
+  restorePlayers,
   addPlayer,
   gameDrives,
   selectedDrive,
@@ -793,14 +817,11 @@ function PlanningPage({
   draggingPlayerId,
   setDraggingPlayerId
 }: {
-  players: Player[]
   availablePlayers: Player[]
   unavailablePlayers: Player[]
-  availability: Record<string, boolean>
-  setPlayerAvailable: (playerId: string, available: boolean) => void
-  newPlayer: { firstName: string; lastName: string; jerseyNumber: string }
-  setNewPlayer: (player: { firstName: string; lastName: string; jerseyNumber: string }) => void
-  addPlayer: () => void
+  removePlayer: (playerId: string) => void
+  restorePlayers: (playerIds: string[]) => void
+  addPlayer: (name: string) => void
   gameDrives: Drive[]
   selectedDrive?: Drive
   setSelectedDriveId: (id: string) => void
@@ -818,76 +839,108 @@ function PlanningPage({
   draggingPlayerId: string | null
   setDraggingPlayerId: (id: string | null) => void
 }) {
+  const [addingPlayer, setAddingPlayer] = useState(false)
+  const [newPlayerName, setNewPlayerName] = useState('')
+  const [showAddBack, setShowAddBack] = useState(false)
+
+  useEffect(() => {
+    if (unavailablePlayers.length === 0) setShowAddBack(false)
+  }, [unavailablePlayers.length])
+
+  function submitNewPlayer() {
+    if (!newPlayerName.trim()) {
+      setAddingPlayer(false)
+      return
+    }
+    addPlayer(newPlayerName)
+    setNewPlayerName('')
+    setAddingPlayer(false)
+  }
+
   return (
     <div className="space-y-4 py-4">
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h2 className="font-display text-xl font-black">Roster</h2>
-            <p className="text-sm font-bold text-[#53665c]">Who is going to be there?</p>
+            <p className="text-sm font-bold text-[#53665c]">Swipe a player off if they are not here.</p>
           </div>
-          <div className="rounded-lg bg-[#1f7a4d] px-3 py-2 text-center text-white">
-            <p className="text-xs font-black uppercase opacity-80">Ready</p>
-            <p className="font-display text-2xl font-black">{availablePlayers.length}</p>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="rounded-lg bg-[#1f7a4d] px-3 py-1 text-center text-white">
+              <p className="font-display text-xl font-black leading-tight">{availablePlayers.length}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAddingPlayer((current) => !current)}
+              aria-label="Add player"
+              aria-expanded={addingPlayer}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#10201a] text-white"
+            >
+              {addingPlayer ? <X size={18} /> : <Plus size={20} />}
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-[1fr_1fr_72px] gap-2">
-          <input
-            value={newPlayer.firstName}
-            onChange={(event) => setNewPlayer({ ...newPlayer, firstName: event.target.value })}
-            placeholder="First"
-            className="min-w-0 rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
-          />
-          <input
-            value={newPlayer.lastName}
-            onChange={(event) => setNewPlayer({ ...newPlayer, lastName: event.target.value })}
-            placeholder="Last"
-            className="min-w-0 rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
-          />
-          <input
-            value={newPlayer.jerseyNumber}
-            onChange={(event) => setNewPlayer({ ...newPlayer, jerseyNumber: event.target.value })}
-            placeholder="#"
-            className="min-w-0 rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
-          />
-        </div>
-        <button type="button" onClick={addPlayer} className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
-          <UserPlus size={17} />
-          Add Player
-        </button>
+        {addingPlayer && (
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <input
+              autoFocus
+              value={newPlayerName}
+              onChange={(event) => setNewPlayerName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') submitNewPlayer()
+                if (event.key === 'Escape') setAddingPlayer(false)
+              }}
+              placeholder="First name"
+              className="min-w-0 rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+            />
+            <button type="button" onClick={submitNewPlayer} className="rounded-lg bg-[#10201a] px-4 py-3 font-black text-white">
+              Add
+            </button>
+          </div>
+        )}
 
         <div className="space-y-2">
-          {players.map((player) => {
-            const ready = isPlayerAvailable(player.id, availability)
-            const playerUsage = usage.find((item) => item.playerId === player.id)
-            return (
-              <div key={player.id} className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-2">
-                <div className="min-w-0">
-                  <p className="truncate font-black">{fullName(player) || player.firstName}</p>
-                  <p className="text-xs font-bold text-[#53665c]">
-                    #{player.jerseyNumber || '--'} · {playerUsage?.totalDrives || 0} drive{playerUsage?.totalDrives === 1 ? '' : 's'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPlayerAvailable(player.id, !ready)}
-                  className={`min-w-24 rounded-lg px-3 py-2 text-sm font-black ${ready ? 'bg-[#1f7a4d] text-white' : 'bg-[#f7c948] text-[#10201a]'}`}
-                >
-                  {ready ? 'Here' : 'Out'}
-                </button>
-              </div>
-            )
-          })}
+          {availablePlayers.length === 0 && (
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+              Nobody on the list yet.
+            </p>
+          )}
+          {availablePlayers.map((player) => (
+            <RosterRow
+              key={player.id}
+              player={player}
+              driveCount={usage.find((item) => item.playerId === player.id)?.totalDrives || 0}
+              onRemove={() => removePlayer(player.id)}
+            />
+          ))}
         </div>
-        {unavailablePlayers.length > 0 && <p className="text-sm font-bold text-[#53665c]">{unavailablePlayers.length} marked out for this game.</p>}
+
+        {unavailablePlayers.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setShowAddBack(true)}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black"
+          >
+            <Undo2 size={16} />
+            Add Back ({unavailablePlayers.length})
+          </button>
+        )}
+
+        {showAddBack && (
+          <AddBackSheet
+            players={unavailablePlayers}
+            restorePlayers={restorePlayers}
+            onClose={() => setShowAddBack(false)}
+          />
+        )}
       </section>
 
       <section className="space-y-3 border-t border-[#d8ded5] pt-4">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-xl font-black">Lineups</h2>
-            <p className="text-sm font-bold text-[#53665c]">Where do they play, and which drive?</p>
+            <p className="text-sm font-bold text-[#53665c]">Carries over to the next game until you edit it.</p>
           </div>
           <button type="button" onClick={autoFillSelectedDrive} disabled={!selectedDrive} className="flex items-center gap-2 rounded-lg bg-[#f7c948] px-3 py-2 text-sm font-black text-[#10201a] disabled:opacity-40">
             <Save size={15} />
@@ -953,7 +1006,8 @@ function GamedayPage({
   gameSummary,
   gameNoteDraft,
   updateDriveNote,
-  recordDriveResult
+  recordDriveResult,
+  startNewGame
 }: {
   gameDrives: Drive[]
   selectedDrive?: Drive
@@ -967,7 +1021,16 @@ function GamedayPage({
   gameNoteDraft: string
   updateDriveNote: (value: string) => void
   recordDriveResult: (result: Exclude<DriveResult, ''>, advance?: boolean) => void
+  startNewGame: () => void
 }) {
+  const [confirmingNewGame, setConfirmingNewGame] = useState(false)
+
+  useEffect(() => {
+    if (!confirmingNewGame) return
+    const timer = window.setTimeout(() => setConfirmingNewGame(false), 4000)
+    return () => window.clearTimeout(timer)
+  }, [confirmingNewGame])
+
   return (
     <div className="space-y-4 py-4">
       <section className="rounded-lg border border-[#d8ded5] bg-[#10201a] p-4 text-white shadow-sm">
@@ -984,15 +1047,35 @@ function GamedayPage({
             <p className="font-display text-3xl font-black">{gameSummary.teamScore}-{gameSummary.opponentScore}</p>
           </div>
         </div>
-        {nextOpenDrive && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {nextOpenDrive && (
+            <button
+              type="button"
+              onClick={() => setSelectedDriveId(nextOpenDrive.id)}
+              className="rounded-lg bg-white/10 px-3 py-2 text-sm font-black text-white ring-1 ring-white/20"
+            >
+              Jump to next open: {driveLabel(nextOpenDrive)}
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setSelectedDriveId(nextOpenDrive.id)}
-            className="mt-3 rounded-lg bg-white/10 px-3 py-2 text-sm font-black text-white ring-1 ring-white/20"
+            onClick={() => {
+              if (confirmingNewGame) {
+                startNewGame()
+                setConfirmingNewGame(false)
+              } else {
+                setConfirmingNewGame(true)
+              }
+            }}
+            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-black ${
+              confirmingNewGame ? 'bg-[#f7c948] text-[#10201a]' : 'bg-white/10 text-white ring-1 ring-white/20'
+            }`}
           >
-            Jump to next open: {driveLabel(nextOpenDrive)}
+            <RotateCcw size={15} />
+            {confirmingNewGame ? 'Clear results?' : 'New Game'}
           </button>
-        )}
+        </div>
+        <p className="mt-2 text-xs font-bold text-white/60">New Game clears results and notes. Lineups stay put.</p>
       </section>
 
       <section className="rounded-lg border border-[#d8ded5] bg-white p-3 shadow-sm">
@@ -1064,6 +1147,148 @@ function GamedayPage({
           ))}
         </div>
       </section>
+    </div>
+  )
+}
+
+const swipeRemoveDistance = 128
+const swipeOpenDistance = 112
+
+/**
+ * Swipe left to drop a player from today's list. A short swipe parks the row open
+ * so the Remove button can be tapped instead; a long swipe removes right away.
+ */
+function RosterRow({
+  player,
+  driveCount,
+  onRemove
+}: {
+  player: Player
+  driveCount: number
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [dragOffset, setDragOffset] = useState<number | null>(null)
+  const startXRef = useRef(0)
+  const pointerIdRef = useRef<number | null>(null)
+
+  const restingOffset = open ? -swipeOpenDistance : 0
+  const offset = dragOffset ?? restingOffset
+
+  function settle(finalOffset: number) {
+    pointerIdRef.current = null
+    setDragOffset(null)
+    if (finalOffset <= -swipeRemoveDistance) {
+      onRemove()
+      return
+    }
+    setOpen(finalOffset <= -24)
+  }
+
+  return (
+    <div className="relative overflow-hidden rounded-lg">
+      <button
+        type="button"
+        onClick={onRemove}
+        tabIndex={open ? 0 : -1}
+        aria-hidden={!open}
+        className="absolute inset-y-0 right-0 flex w-40 items-center justify-end gap-2 rounded-lg bg-[#c2412d] px-4 font-black text-white"
+      >
+        <Trash2 size={16} />
+        Remove
+      </button>
+      <div
+        style={{ transform: `translateX(${offset}px)`, touchAction: 'pan-y' }}
+        className={`relative grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 ${
+          dragOffset === null ? 'transition-transform duration-150' : ''
+        }`}
+        onPointerDown={(event) => {
+          if (event.pointerType === 'mouse' && event.button !== 0) return
+          startXRef.current = event.clientX
+          pointerIdRef.current = event.pointerId
+        }}
+        onPointerMove={(event) => {
+          if (pointerIdRef.current !== event.pointerId) return
+          const delta = event.clientX - startXRef.current
+          if (Math.abs(delta) < 6 && dragOffset === null) return
+          if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }
+          setDragOffset(Math.min(0, Math.max(restingOffset + delta, -swipeRemoveDistance - 24)))
+        }}
+        onPointerUp={(event) => {
+          if (pointerIdRef.current !== event.pointerId) return
+          if (dragOffset === null) {
+            pointerIdRef.current = null
+            setOpen(false)
+            return
+          }
+          settle(offset)
+        }}
+        onPointerCancel={(event) => {
+          if (pointerIdRef.current !== event.pointerId) return
+          settle(restingOffset)
+        }}
+      >
+        <p className="truncate font-black">{player.firstName}</p>
+        <p className="shrink-0 text-xs font-bold text-[#53665c]">
+          {driveCount} drive{driveCount === 1 ? '' : 's'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function AddBackSheet({
+  players,
+  restorePlayers,
+  onClose
+}: {
+  players: Player[]
+  restorePlayers: (playerIds: string[]) => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-xl font-black">Add Back</h3>
+            <p className="text-sm font-bold text-[#53665c]">{players.length} off the list</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8ded5]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto">
+          {players.map((player) => (
+            <div key={player.id} className="flex items-center justify-between gap-2 rounded-lg border border-[#d8ded5] px-3 py-2">
+              <p className="truncate font-black">{player.firstName}</p>
+              <button
+                type="button"
+                onClick={() => restorePlayers([player.id])}
+                className="shrink-0 rounded-lg bg-[#1f7a4d] px-4 py-2 text-sm font-black text-white"
+              >
+                Add
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => restorePlayers(players.map((player) => player.id))}
+          className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white"
+        >
+          Add All
+        </button>
+      </div>
     </div>
   )
 }
@@ -1159,7 +1384,6 @@ function FormationBoard({
             >
               <p className="text-[11px] font-black uppercase opacity-80">{slot.shortName}</p>
               <p className="mt-1 truncate text-sm font-black leading-tight">{player ? player.firstName : 'Open'}</p>
-              {player && <p className="text-[11px] text-[#53665c]">#{player.jerseyNumber || '--'} · {playerInitials(player)}</p>}
             </button>
           </div>
         )
@@ -1198,12 +1422,11 @@ function BenchPicker({
             }}
             onDragEnd={() => setDraggingPlayerId(null)}
             onClick={() => setSelectedPlayerId(selectedPlayerId === player.id ? null : player.id)}
-            className={`min-w-28 shrink-0 rounded-lg border px-3 py-3 text-left ${
+            className={`min-w-24 shrink-0 rounded-lg border px-3 py-3 text-left ${
               selectedPlayerId === player.id ? 'border-[#10201a] bg-[#f7c948] text-[#10201a]' : 'border-[#d8ded5] bg-white'
             }`}
           >
             <p className="font-black">{player.firstName}</p>
-            <p className="text-xs font-bold text-[#53665c]">#{player.jerseyNumber || '--'}</p>
           </button>
         ))}
       </div>

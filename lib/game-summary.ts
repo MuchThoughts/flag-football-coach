@@ -1,4 +1,4 @@
-import type { Drive, DriveResult } from './types'
+import { CONVERSION_POINTS, type Drive, type DriveResult } from './types'
 
 export interface ScoringPlay {
   driveId: string
@@ -52,15 +52,31 @@ export function getGameSummary(drives: Drive[]): GameSummary {
   return summary
 }
 
+/**
+ * A touchdown counts for whoever had the ball: ours on an offensive drive, theirs
+ * on a defensive one. Any conversion goes to the same side.
+ */
 function getScoringPlay(drive: Drive): ScoringPlay | null {
   const label = `${drive.unit === 'offense' ? 'OFF' : 'DEF'} ${drive.driveNumber}`
+  const conversionPoints = CONVERSION_POINTS[drive.conversion || '']
 
   if (drive.result === 'TD') {
+    const team = drive.unit === 'offense' ? 'us' : 'opponent'
     return {
       driveId: drive.id,
       label,
-      team: 'us',
-      points: 6
+      team,
+      points: 6 + conversionPoints
+    }
+  }
+
+  // Results kept for games recorded before touchdowns knew which unit was on the field.
+  if (drive.result === 'TD Allowed') {
+    return {
+      driveId: drive.id,
+      label,
+      team: 'opponent',
+      points: 6 + conversionPoints
     }
   }
 
@@ -68,17 +84,8 @@ function getScoringPlay(drive: Drive): ScoringPlay | null {
     return {
       driveId: drive.id,
       label,
-      team: 'us',
+      team: drive.unit === 'offense' ? 'us' : 'opponent',
       points: 1
-    }
-  }
-
-  if (drive.result === 'TD Allowed') {
-    return {
-      driveId: drive.id,
-      label,
-      team: 'opponent',
-      points: 6
     }
   }
 

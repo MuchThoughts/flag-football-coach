@@ -22,7 +22,9 @@ export function createDrive(id: string, unit: Unit, driveNumber: number, game = 
     isRepeated: false,
     isCustomized: false,
     assignments: createEmptyAssignments(unit),
+    backups: {},
     result: '',
+    conversion: '',
     notes: emptyNote(),
     status: 'planned',
     locked: false
@@ -81,6 +83,7 @@ export const initialAppState: AppState = {
     {
       id: gameId,
       teamId,
+      name: 'Game 1',
       date: '',
       location: '',
       status: 'scheduled',

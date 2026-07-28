@@ -86,6 +86,30 @@ assert.equal(scoreSummary.remainingDrives, 1)
 assert.equal(getResultCount(scoreSummary, 'TD'), 1)
 assert.equal(getResultCount(scoreSummary, 'TD Allowed'), 1)
 
+// A touchdown counts for whoever had the ball, and the conversion follows it.
+const unitScoring = getGameSummary([
+  { ...createDrive('u-off-td', 'offense', 1, 'unit-game'), status: 'completed', result: 'TD', conversion: 'extra_point' },
+  { ...createDrive('u-off-td2', 'offense', 2, 'unit-game'), status: 'completed', result: 'TD', conversion: 'two_point' },
+  { ...createDrive('u-def-td', 'defense', 1, 'unit-game'), status: 'completed', result: 'TD', conversion: 'extra_point' },
+  { ...createDrive('u-def-stop', 'defense', 2, 'unit-game'), status: 'completed', result: 'Stop' }
+])
+assert.equal(unitScoring.teamScore, 15)
+assert.equal(unitScoring.opponentScore, 7)
+assert.equal(unitScoring.scoringPlays.filter((play) => play.team === 'opponent').length, 1)
+
+const bareTouchdowns = getGameSummary([
+  { ...createDrive('b-off-td', 'offense', 1, 'bare-game'), status: 'completed', result: 'TD' },
+  { ...createDrive('b-def-td', 'defense', 1, 'bare-game'), status: 'completed', result: 'TD' }
+])
+assert.equal(bareTouchdowns.teamScore, 6)
+assert.equal(bareTouchdowns.opponentScore, 6)
+
+// An unfinished drive never scores, conversion or not.
+const pendingTouchdown = getGameSummary([
+  { ...createDrive('p-off-td', 'offense', 1, 'pending-game'), result: 'TD', conversion: 'two_point' }
+])
+assert.equal(pendingTouchdown.teamScore, 0)
+
 const sourceDrive = {
   ...createDrive('pattern-source', 'offense', 1, 'pattern-game'),
   assignments: {
@@ -290,5 +314,25 @@ assert.deepEqual(getSlotPosition(qbSlot, { [slotPositionKey('defense', 'QB')]: {
 
 const statelessPositions = migrateAppState({ ...initialAppState, slotPositions: undefined } as unknown as typeof initialAppState)
 assert.deepEqual(statelessPositions.slotPositions, {})
+
+// Games and drives saved before names, backups and conversions existed.
+const preNamedGames = migrateAppState({
+  ...initialAppState,
+  games: [
+    { ...initialAppState.games[0], name: undefined },
+    { ...initialAppState.games[0], id: 'game-2', name: undefined }
+  ],
+  drives: [{ ...createDrive('legacy-drive', 'offense', 1), backups: undefined, conversion: undefined }]
+} as unknown as typeof initialAppState)
+assert.equal(preNamedGames.games[0].name, 'Game 1')
+assert.equal(preNamedGames.games[1].name, 'Game 2')
+assert.deepEqual(preNamedGames.drives[0].backups, {})
+assert.equal(preNamedGames.drives[0].conversion, '')
+
+const namedGame = migrateAppState({
+  ...initialAppState,
+  games: [{ ...initialAppState.games[0], name: 'Season Opener' }]
+} as unknown as typeof initialAppState)
+assert.equal(namedGame.games[0].name, 'Season Opener')
 
 console.log('logic tests passed')

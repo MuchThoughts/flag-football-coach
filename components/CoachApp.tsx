@@ -32,14 +32,19 @@ import { getGameSummary } from '@/lib/game-summary'
 import { migrateAppState } from '@/lib/migrate-state'
 import { getSlotPosition, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
-import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Player, SlotPositions, Unit } from '@/lib/types'
+import type { AppSettings, AppState, Conversion, Drive, DriveNote, DriveResult, Game, Player, SlotPositions, Unit } from '@/lib/types'
 
 type Workflow = 'planning' | 'gameday'
 type SyncStatus = 'local' | 'signed_out' | 'loading' | 'synced' | 'saving' | 'error'
 
 const storageKey = 'flag-football-coach:v3'
 const legacyStorageKeys = ['flag-football-coach:v2', 'flag-football-coach:v1']
-const resultOptions: Array<Exclude<DriveResult, ''>> = ['TD', 'Stop', 'Turnover', 'Extra Point', 'Punt', 'End Half', 'End Game', 'TD Allowed']
+const resultOptions: Array<Exclude<DriveResult, ''>> = ['TD', 'Stop', 'Turnover', 'Punt', 'End Half', 'End Game']
+const conversionOptions: Array<{ value: Conversion; label: string }> = [
+  { value: '', label: 'None' },
+  { value: 'extra_point', label: 'XP +1' },
+  { value: 'two_point', label: '2-Pt +2' }
+]
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -366,6 +371,7 @@ export default function CoachApp() {
     setDrives((items) =>
       items.map((drive) => {
         const assignments = { ...drive.assignments }
+        const backups = { ...drive.backups }
         let changed = false
         Object.keys(assignments).forEach((slotCode) => {
           if (assignments[slotCode] === playerId) {
@@ -373,7 +379,13 @@ export default function CoachApp() {
             changed = true
           }
         })
-        return changed ? { ...drive, assignments } : drive
+        Object.keys(backups).forEach((slotCode) => {
+          if (backups[slotCode] === playerId) {
+            backups[slotCode] = null
+            changed = true
+          }
+        })
+        return changed ? { ...drive, assignments, backups } : drive
       })
     )
 
@@ -417,18 +429,40 @@ export default function CoachApp() {
     }))
   }
 
-  /** Clears results and notes but keeps the lineups, so strategy carries into the next game. */
-  function startNewGame() {
-    if (!selectedGame) return
-    setDrives((items) =>
-      items.map((drive) =>
-        drive.gameId === selectedGame.id
-          ? { ...drive, result: '', status: 'planned', notes: emptyNote(), startedAt: undefined, endedAt: undefined }
-          : drive
-      )
-    )
-    restorePlayers(activePlayers.map((player) => player.id))
-    setSelectedDriveId(gameDrives[0]?.id || selectedDriveId)
+  /**
+   * Starts a named game. Lineups carry over from the current game, results and
+   * notes do not, and the old game stays put so it can be reopened later.
+   */
+  function startNewGame(name: string) {
+    const game: Game = {
+      id: uid('game'),
+      teamId: team.id,
+      name: name.trim() || `Game ${games.length + 1}`,
+      date: new Date().toISOString().slice(0, 10),
+      location: '',
+      status: 'scheduled',
+      patternLength: selectedGame?.patternLength || 3
+    }
+
+    const carriedDrives = gameDrives.map((drive) => ({
+      ...drive,
+      id: uid('drive'),
+      gameId: game.id,
+      assignments: { ...drive.assignments },
+      backups: { ...drive.backups },
+      result: '' as DriveResult,
+      conversion: '' as Conversion,
+      notes: emptyNote(),
+      status: 'planned' as const,
+      startedAt: undefined,
+      endedAt: undefined
+    }))
+
+    setGames((items) => [...items, game])
+    setDrives((items) => [...items, ...carriedDrives])
+    setAvailabilityByGame((current) => ({ ...current, [game.id]: {} }))
+    setSelectedGameId(game.id)
+    setSelectedDriveId(carriedDrives[0]?.id || '')
     setGameNoteDraft('')
   }
 
@@ -465,6 +499,16 @@ export default function CoachApp() {
     setDraggingPlayerId(null)
   }
 
+  /** The stand-in for a position if the starter goes down. */
+  function setSlotBackup(slotCode: string, playerId: string | null) {
+    if (!selectedDrive) return
+    setDrives((items) =>
+      items.map((drive) =>
+        drive.id === selectedDrive.id ? { ...drive, backups: { ...drive.backups, [slotCode]: playerId } } : drive
+      )
+    )
+  }
+
   function clearSlot(slotCode: string) {
     if (!selectedDrive) return
 
@@ -474,6 +518,7 @@ export default function CoachApp() {
           ? {
               ...drive,
               assignments: { ...drive.assignments, [slotCode]: null },
+              backups: { ...drive.backups, [slotCode]: null },
               isCustomized: drive.isRepeated ? true : drive.isCustomized
             }
           : drive
@@ -492,6 +537,7 @@ export default function CoachApp() {
           ? {
               ...drive,
               assignments: { ...source.assignments },
+              backups: { ...source.backups },
               isCustomized: drive.isRepeated ? true : drive.isCustomized
             }
           : drive
@@ -544,6 +590,11 @@ export default function CoachApp() {
       const nextDrive = gameDrives.slice(selectedDriveIndex + 1).find((drive) => drive.status !== 'completed')
       if (nextDrive) setSelectedDriveId(nextDrive.id)
     }
+  }
+
+  function setDriveConversion(conversion: Conversion) {
+    if (!selectedDrive) return
+    setDrives((items) => items.map((drive) => (drive.id === selectedDrive.id ? { ...drive, conversion } : drive)))
   }
 
   function updateDriveNote(value: string) {
@@ -657,6 +708,9 @@ export default function CoachApp() {
         <AppHeader
           teamName={team.name}
           readyCount={availablePlayers.length}
+          games={games}
+          selectedGameId={selectedGame?.id || ''}
+          setSelectedGameId={setSelectedGameId}
           workflow={workflow}
           syncStatus={syncStatus}
           syncMessage={syncMessage}
@@ -694,6 +748,7 @@ export default function CoachApp() {
             setSelectedPlayerId={setSelectedPlayerId}
             benchPlayers={benchPlayers}
             assignPlayerToSlot={assignPlayerToSlot}
+            setSlotBackup={setSlotBackup}
             clearSlot={clearSlot}
             playersById={players}
             usage={usage}
@@ -715,7 +770,10 @@ export default function CoachApp() {
             gameNoteDraft={gameNoteDraft}
             updateDriveNote={updateDriveNote}
             recordDriveResult={recordDriveResult}
+            setDriveConversion={setDriveConversion}
             startNewGame={startNewGame}
+            gameName={selectedGame?.name || ''}
+            gameCount={games.length}
             slotPositions={slotPositions}
             availability={availability}
           />
@@ -735,6 +793,9 @@ export default function CoachApp() {
 function AppHeader({
   teamName,
   readyCount,
+  games,
+  selectedGameId,
+  setSelectedGameId,
   workflow,
   syncStatus,
   syncMessage,
@@ -749,6 +810,9 @@ function AppHeader({
 }: {
   teamName: string
   readyCount: number
+  games: Game[]
+  selectedGameId: string
+  setSelectedGameId: (id: string) => void
   workflow: Workflow
   syncStatus: SyncStatus
   syncMessage: string
@@ -776,9 +840,21 @@ function AppHeader({
         <div className="min-w-0">
           <p className="text-xs font-black uppercase text-[#53665c]">{workflow}</p>
           <h1 className="truncate font-display text-2xl font-black">{teamName}</h1>
-          <p className="truncate text-sm font-bold text-[#53665c]">
-            {readyCount} player{readyCount === 1 ? '' : 's'} on the list
-          </p>
+          <div className="mt-1 flex items-center gap-2">
+            <select
+              value={selectedGameId}
+              onChange={(event) => setSelectedGameId(event.target.value)}
+              aria-label="Game"
+              className="min-w-0 max-w-[190px] truncate rounded-lg border border-[#d8ded5] bg-white px-2 py-1 text-sm font-black outline-none"
+            >
+              {games.map((game) => (
+                <option key={game.id} value={game.id}>
+                  {game.name}
+                </option>
+              ))}
+            </select>
+            <span className="shrink-0 text-xs font-bold text-[#53665c]">{readyCount} here</span>
+          </div>
         </div>
         <details className="shrink-0">
           <summary className={`flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-xs font-black uppercase ${syncTone}`}>
@@ -856,6 +932,7 @@ function PlanningPage({
   setSelectedPlayerId,
   benchPlayers,
   assignPlayerToSlot,
+  setSlotBackup,
   clearSlot,
   playersById,
   usage,
@@ -885,6 +962,7 @@ function PlanningPage({
   setSelectedPlayerId: (id: string | null) => void
   benchPlayers: Player[]
   assignPlayerToSlot: (slotCode: string, playerId?: string) => void
+  setSlotBackup: (slotCode: string, playerId: string | null) => void
   clearSlot: (slotCode: string) => void
   playersById: Player[]
   usage: ReturnType<typeof computeUsage>
@@ -1121,6 +1199,7 @@ function PlanningPage({
                   assignPlayerToSlot(pickingSlot.code, playerId)
                   setPickingSlotCode(null)
                 }}
+                onSetBackup={(playerId) => setSlotBackup(pickingSlot.code, playerId)}
                 onClear={() => {
                   clearSlot(pickingSlot.code)
                   setPickingSlotCode(null)
@@ -1154,7 +1233,10 @@ function GamedayPage({
   gameNoteDraft,
   updateDriveNote,
   recordDriveResult,
+  setDriveConversion,
   startNewGame,
+  gameName,
+  gameCount,
   slotPositions,
   availability
 }: {
@@ -1170,22 +1252,19 @@ function GamedayPage({
   gameNoteDraft: string
   updateDriveNote: (value: string) => void
   recordDriveResult: (result: Exclude<DriveResult, ''>, advance?: boolean) => void
-  startNewGame: () => void
+  setDriveConversion: (conversion: Conversion) => void
+  startNewGame: (name: string) => void
+  gameName: string
+  gameCount: number
   slotPositions: SlotPositions
   availability: Record<string, boolean>
 }) {
-  const [confirmingNewGame, setConfirmingNewGame] = useState(false)
-
-  useEffect(() => {
-    if (!confirmingNewGame) return
-    const timer = window.setTimeout(() => setConfirmingNewGame(false), 4000)
-    return () => window.clearTimeout(timer)
-  }, [confirmingNewGame])
+  const [namingGame, setNamingGame] = useState(false)
 
   return (
     <div className="space-y-4 py-4">
       <section className="rounded-lg border border-[#d8ded5] bg-[#10201a] p-4 text-white shadow-sm">
-        <p className="text-xs font-black uppercase text-[#f7c948]">Gameday</p>
+        <p className="truncate text-xs font-black uppercase text-[#f7c948]">{gameName || 'Gameday'}</p>
         <div className="mt-1 flex items-end justify-between gap-3">
           <div>
             <h2 className="font-display text-3xl font-black">{selectedDrive ? driveLabel(selectedDrive) : 'No Drive'}</h2>
@@ -1210,24 +1289,26 @@ function GamedayPage({
           )}
           <button
             type="button"
-            onClick={() => {
-              if (confirmingNewGame) {
-                startNewGame()
-                setConfirmingNewGame(false)
-              } else {
-                setConfirmingNewGame(true)
-              }
-            }}
-            className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-black ${
-              confirmingNewGame ? 'bg-[#f7c948] text-[#10201a]' : 'bg-white/10 text-white ring-1 ring-white/20'
-            }`}
+            onClick={() => setNamingGame(true)}
+            className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-black text-white ring-1 ring-white/20"
           >
             <RotateCcw size={15} />
-            {confirmingNewGame ? 'Clear results?' : 'New Game'}
+            New Game
           </button>
         </div>
-        <p className="mt-2 text-xs font-bold text-white/60">New Game clears results and notes. Lineups stay put.</p>
+        <p className="mt-2 text-xs font-bold text-white/60">New Game starts a fresh scoresheet and carries your lineups over.</p>
       </section>
+
+      {namingGame && (
+        <NewGameSheet
+          defaultName={`Game ${gameCount + 1}`}
+          onCreate={(name) => {
+            startNewGame(name)
+            setNamingGame(false)
+          }}
+          onClose={() => setNamingGame(false)}
+        />
+      )}
 
       <section className="rounded-lg border border-[#d8ded5] bg-white p-3 shadow-sm">
         <div className="grid grid-cols-[44px_1fr_44px] items-center gap-2">
@@ -1259,10 +1340,34 @@ function GamedayPage({
                   selectedDrive.result === result ? 'border-[#10201a] bg-[#f7c948] text-[#10201a]' : 'border-[#d8ded5] bg-white'
                 }`}
               >
-                {result}
+                {result === 'TD' && selectedDrive.unit === 'defense' ? 'TD (them)' : result}
               </button>
             ))}
           </div>
+
+          {selectedDrive.result === 'TD' && (
+            <div className="mt-3 rounded-lg bg-[#f7f5ee] p-3">
+              <p className="text-xs font-black uppercase text-[#53665c]">
+                After the touchdown{selectedDrive.unit === 'defense' ? ' (counts for them)' : ''}
+              </p>
+              <div className="mt-2 grid grid-cols-3 gap-2">
+                {conversionOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setDriveConversion(option.value)}
+                    className={`rounded-lg border px-2 py-3 text-sm font-black ${
+                      (selectedDrive.conversion || '') === option.value
+                        ? 'border-[#10201a] bg-[#1f7a4d] text-white'
+                        : 'border-[#d8ded5] bg-white'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <textarea
             value={gameNoteDraft}
             onChange={(event) => updateDriveNote(event.target.value)}
@@ -1439,6 +1544,48 @@ function RosterRow({
   )
 }
 
+function NewGameSheet({
+  defaultName,
+  onCreate,
+  onClose
+}: {
+  defaultName: string
+  onCreate: (name: string) => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(defaultName)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+        <h3 className="font-display text-xl font-black">New Game</h3>
+        <p className="mt-1 text-sm font-bold text-[#53665c]">
+          Your lineups carry over. Results and notes start fresh, and this game is saved so you can open it again later.
+        </p>
+        <input
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') onCreate(name)
+            if (event.key === 'Escape') onClose()
+          }}
+          placeholder="Game name"
+          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+        />
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+            Cancel
+          </button>
+          <button type="button" onClick={() => onCreate(name)} className="rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
+            Start Game
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 /** Copy a whole lineup from another drive of the same unit. */
 function CopyDriveSheet({
   drives,
@@ -1503,12 +1650,99 @@ function CopyDriveSheet({
   )
 }
 
-/** Tapping a position on the field: pick anyone, including someone already on the field. */
+const backupHoldDuration = 700
+
+/** Tap to make this player the starter, hold to make them the backup. */
+function SlotPickerRow({
+  player,
+  isCurrent,
+  isBackup,
+  playingAt,
+  onSelect,
+  onHold
+}: {
+  player: Player
+  isCurrent: boolean
+  isBackup: boolean
+  playingAt?: string
+  onSelect: () => void
+  onHold: () => void
+}) {
+  const [holding, setHolding] = useState(false)
+  const holdTimerRef = useRef<number | null>(null)
+  const holdFiredRef = useRef(false)
+
+  function cancelHold() {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+    setHolding(false)
+  }
+
+  useEffect(() => cancelHold, [])
+
+  return (
+    <button
+      type="button"
+      onContextMenu={(event) => event.preventDefault()}
+      onPointerDown={(event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return
+        holdFiredRef.current = false
+        setHolding(true)
+        holdTimerRef.current = window.setTimeout(() => {
+          holdFiredRef.current = true
+          holdTimerRef.current = null
+          setHolding(false)
+          navigator.vibrate?.(15)
+          onHold()
+        }, backupHoldDuration)
+      }}
+      onPointerUp={cancelHold}
+      onPointerLeave={cancelHold}
+      onPointerCancel={cancelHold}
+      onClick={() => {
+        if (holdFiredRef.current) {
+          holdFiredRef.current = false
+          return
+        }
+        onSelect()
+      }}
+      className={`relative w-full select-none overflow-hidden rounded-lg border px-3 py-3 text-left ${
+        isCurrent ? 'border-[#10201a] bg-[#f7c948]/30' : isBackup ? 'border-[#1f7a4d] bg-[#1f7a4d]/10' : 'border-[#d8ded5] bg-white'
+      }`}
+    >
+      <span
+        aria-hidden
+        style={{ width: holding ? '100%' : '0%', transition: holding ? `width ${backupHoldDuration}ms linear` : 'none' }}
+        className="absolute inset-y-0 left-0 bg-[#1f7a4d]/20"
+      />
+      <span className="relative flex items-center justify-between gap-2">
+        <span className="truncate font-black">{player.firstName}</span>
+        {isBackup ? (
+          <span className="shrink-0 rounded-full bg-[#1f7a4d] px-2 py-1 text-xs font-black uppercase text-white">Backup</span>
+        ) : isCurrent ? (
+          <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">Here now</span>
+        ) : playingAt ? (
+          <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black text-[#53665c]">Now at {playingAt}</span>
+        ) : (
+          <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">Bench</span>
+        )}
+      </span>
+    </button>
+  )
+}
+
+/**
+ * Tapping a position on the field: pick anyone, including someone already on the
+ * field. Holding a name instead marks them as the backup for that position.
+ */
 function SlotPickerSheet({
   slot,
   drive,
   players,
   onAssign,
+  onSetBackup,
   onClear,
   onClose
 }: {
@@ -1516,10 +1750,12 @@ function SlotPickerSheet({
   drive: Drive
   players: Player[]
   onAssign: (playerId: string) => void
+  onSetBackup: (playerId: string | null) => void
   onClear: () => void
   onClose: () => void
 }) {
   const currentPlayerId = drive.assignments[slot.code]
+  const backupPlayerId = drive.backups[slot.code]
   const slots = SLOTS_BY_UNIT[drive.unit]
 
   function currentSlotFor(playerId: string) {
@@ -1532,9 +1768,7 @@ function SlotPickerSheet({
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-display text-xl font-black">{slot.name}</h3>
-            <p className="text-sm font-bold text-[#53665c]">
-              {drive.unit === 'offense' ? 'Offense' : 'Defense'} · {driveLabel(drive)}
-            </p>
+            <p className="text-sm font-bold text-[#53665c]">Tap to start · hold to set a backup</p>
           </div>
           <button
             type="button"
@@ -1555,35 +1789,33 @@ function SlotPickerSheet({
           {players.map((player) => {
             const playingElsewhere = currentSlotFor(player.id)
             const isCurrent = currentPlayerId === player.id
+            const isBackup = backupPlayerId === player.id
             return (
-              <button
+              <SlotPickerRow
                 key={player.id}
-                type="button"
-                onClick={() => onAssign(player.id)}
-                className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-3 text-left ${
-                  isCurrent ? 'border-[#10201a] bg-[#f7c948]/30' : 'border-[#d8ded5] bg-white'
-                }`}
-              >
-                <span className="truncate font-black">{player.firstName}</span>
-                {isCurrent ? (
-                  <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">Here now</span>
-                ) : playingElsewhere ? (
-                  <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black text-[#53665c]">
-                    Now at {playingElsewhere.shortName}
-                  </span>
-                ) : (
-                  <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">Bench</span>
-                )}
-              </button>
+                player={player}
+                isCurrent={isCurrent}
+                isBackup={isBackup}
+                playingAt={playingElsewhere?.shortName}
+                onSelect={() => onAssign(player.id)}
+                onHold={() => onSetBackup(isBackup ? null : player.id)}
+              />
             )
           })}
         </div>
 
-        {currentPlayerId && (
-          <button type="button" onClick={onClear} className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
-            Leave {slot.shortName} open
-          </button>
-        )}
+        <div className="mt-3 grid gap-2">
+          {backupPlayerId && (
+            <button type="button" onClick={() => onSetBackup(null)} className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+              Clear backup
+            </button>
+          )}
+          {currentPlayerId && (
+            <button type="button" onClick={onClear} className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+              Leave {slot.shortName} open
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -1885,6 +2117,7 @@ function FormationBoard({
           <div className="absolute left-3 top-3 rounded-full bg-black/20 px-2 py-1 text-xs font-black uppercase text-white">{drive.unit}</div>
           {slots.map((slot) => {
             const player = players.find((item) => item.id === drive.assignments[slot.code])
+            const backup = players.find((item) => item.id === drive.backups[slot.code])
             const isOut = Boolean(player) && (!player!.active || !isPlayerAvailable(player!.id, availability))
             const position = getSlotPosition(slot, slotPositions)
             const isDragging = draggingSlot === slot.code
@@ -1930,6 +2163,11 @@ function FormationBoard({
                   <p className="text-[11px] font-black uppercase opacity-80">{slot.shortName}</p>
                   <p className="mt-1 truncate text-sm font-black leading-tight">{player ? player.firstName : 'Open'}</p>
                   {isOut && <p className="text-[10px] font-black uppercase tracking-wide text-white/90">Out</p>}
+                  {backup && (
+                    <p className={`truncate text-[10px] italic leading-tight ${isOut ? 'text-white/80' : 'text-[#53665c]'}`}>
+                      {backup.firstName}
+                    </p>
+                  )}
                 </button>
               </div>
             )

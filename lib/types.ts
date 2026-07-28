@@ -13,6 +13,15 @@ export type DriveResult =
   | 'TD Allowed'
   | ''
 
+/** What followed a touchdown: nothing, a 1-point extra point, or a 2-point conversion. */
+export type Conversion = '' | 'extra_point' | 'two_point'
+
+export const CONVERSION_POINTS: Record<Conversion, number> = {
+  '': 0,
+  extra_point: 1,
+  two_point: 2
+}
+
 export type PlayerRatings = Record<string, number>
 
 /** Coach-dragged marker positions, keyed `${unit}:${slotCode}`, as percentages of the field. */
@@ -38,6 +47,7 @@ export interface Player {
 export interface Game {
   id: string
   teamId: string
+  name: string
   date: string
   location: string
   status: 'scheduled' | 'in_progress' | 'completed'
@@ -62,7 +72,10 @@ export interface Drive {
   isRepeated: boolean
   isCustomized: boolean
   assignments: Record<string, string | null>
+  /** Stand-in per position if the starter goes down, keyed by slot code. */
+  backups: Record<string, string | null>
   result: DriveResult
+  conversion: Conversion
   notes: DriveNote
   startedAt?: string
   endedAt?: string

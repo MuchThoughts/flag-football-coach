@@ -1,4 +1,5 @@
 import type { AppState, Drive, Game, Player } from './types'
+
 import { initialAppState, samplePlayers } from './sample-data'
 
 const legacySamplePlayerIds = [
@@ -28,14 +29,23 @@ function normalizePlayer(player: Player): Player {
   }
 }
 
-function normalizeGame(game: Game): Game {
+function normalizeGame(game: Game, index: number): Game {
   return {
     id: game.id,
     teamId: game.teamId,
+    name: game.name || `Game ${index + 1}`,
     date: game.date || '',
     location: game.location || '',
     status: game.status || 'scheduled',
     patternLength: game.patternLength || 3
+  }
+}
+
+function normalizeDrive(drive: Drive): Drive {
+  return {
+    ...drive,
+    backups: drive.backups || {},
+    conversion: drive.conversion || ''
   }
 }
 
@@ -80,7 +90,11 @@ function replaceDemoRoster(state: AppState): AppState {
       ...samplePlayers,
       ...coachAddedPlayers.filter((player) => !samplePlayers.some((seed) => seed.id === player.id))
     ],
-    drives: state.drives.map((drive) => ({ ...drive, assignments: remapAssignments(drive.assignments, idMap) })),
+    drives: state.drives.map((drive) => ({
+      ...drive,
+      assignments: remapAssignments(drive.assignments, idMap),
+      backups: remapAssignments(drive.backups || {}, idMap)
+    })),
     availabilityByGame: Object.entries(state.availabilityByGame || {}).reduce<
       Record<string, Record<string, boolean>>
     >((next, [gameId, availability]) => {
@@ -118,6 +132,7 @@ export function migrateAppState(saved: AppState): AppState {
     },
     players: (saved.players || []).map(normalizePlayer),
     games: (saved.games || initialAppState.games).map(normalizeGame),
+    drives: (saved.drives || []).map(normalizeDrive),
     availabilityByGame: saved.availabilityByGame || {},
     practices: saved.practices || [],
     practiceTemplates: saved.practiceTemplates || initialAppState.practiceTemplates,

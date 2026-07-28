@@ -39,47 +39,54 @@ function normalizeGame(game: Game): Game {
   }
 }
 
-function remapAssignments(drive: Drive, idMap: Map<string, string>): Drive {
-  const assignments = Object.entries(drive.assignments).reduce<Record<string, string | null>>(
-    (next, [slotCode, playerId]) => {
-      next[slotCode] = playerId ? idMap.get(playerId) || null : null
-      return next
-    },
-    {}
-  )
+/** Demo ids become their real-roster equivalent; anyone else keeps their slot. */
+function remapPlayerId(playerId: string | null, idMap: Map<string, string>): string | null {
+  if (!playerId) return null
+  if (!legacySamplePlayerIds.includes(playerId)) return playerId
+  return idMap.get(playerId) || null
+}
 
-  return { ...drive, assignments }
+function remapAssignments(assignments: Record<string, string | null>, idMap: Map<string, string>) {
+  return Object.entries(assignments).reduce<Record<string, string | null>>((next, [slotCode, playerId]) => {
+    next[slotCode] = remapPlayerId(playerId, idMap)
+    return next
+  }, {})
 }
 
 /**
- * Older saved states carry the demo roster. Swap it for the real roster and keep
- * planned lineups pointing at the equivalent player. Rosters the coach has
- * touched (any player id outside the demo set) are left alone.
+ * Older saved states carry the demo roster. Drop every demo player, drop in the
+ * real roster in their place, and keep planned lineups pointing at the
+ * equivalent player. Players the coach added themselves are always kept.
  */
 function replaceDemoRoster(state: AppState): AppState {
-  const ids = state.players.map((player) => player.id)
-  if (ids.length === 0 || !ids.every((id) => legacySamplePlayerIds.includes(id))) {
+  const demoIds = state.players.map((player) => player.id).filter((id) => legacySamplePlayerIds.includes(id))
+  if (demoIds.length === 0) {
     return state
   }
 
   const idMap = new Map<string, string>()
-  ids.forEach((id) => {
+  demoIds.forEach((id) => {
     const replacement = samplePlayers[legacySamplePlayerIds.indexOf(id)]
     if (replacement) {
       idMap.set(id, replacement.id)
     }
   })
 
+  const coachAddedPlayers = state.players.filter((player) => !legacySamplePlayerIds.includes(player.id))
+
   return {
     ...state,
-    players: samplePlayers,
-    drives: state.drives.map((drive) => remapAssignments(drive, idMap)),
+    players: [
+      ...samplePlayers,
+      ...coachAddedPlayers.filter((player) => !samplePlayers.some((seed) => seed.id === player.id))
+    ],
+    drives: state.drives.map((drive) => ({ ...drive, assignments: remapAssignments(drive.assignments, idMap) })),
     availabilityByGame: Object.entries(state.availabilityByGame || {}).reduce<
       Record<string, Record<string, boolean>>
     >((next, [gameId, availability]) => {
       next[gameId] = Object.entries(availability).reduce<Record<string, boolean>>(
         (mapped, [playerId, available]) => {
-          const newId = idMap.get(playerId)
+          const newId = remapPlayerId(playerId, idMap)
           if (newId) {
             mapped[newId] = available
           }
@@ -91,13 +98,7 @@ function replaceDemoRoster(state: AppState): AppState {
     }, {}),
     lineupTemplates: (state.lineupTemplates || []).map((template) => ({
       ...template,
-      assignments: Object.entries(template.assignments).reduce<Record<string, string | null>>(
-        (next, [slotCode, playerId]) => {
-          next[slotCode] = playerId ? idMap.get(playerId) || null : null
-          return next
-        },
-        {}
-      )
+      assignments: remapAssignments(template.assignments, idMap)
     }))
   }
 }

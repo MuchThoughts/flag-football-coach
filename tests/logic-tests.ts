@@ -215,4 +215,39 @@ const untouchedRoster = migrateAppState(coachEditedState)
 assert.equal(untouchedRoster.players.length, 12)
 assert.equal(untouchedRoster.players[11].firstName, 'Sean')
 
+// Demo roster plus a player the coach added: demo names go, the coach's player stays put.
+const customPlayer = {
+  id: 'player-custom',
+  teamId: 'team-wildcats',
+  firstName: 'Sean',
+  active: true,
+  offenseRatings: { QB: 3, C: 3, WR: 3, RB: 3 },
+  defenseRatings: { R: 3, S: 3, MLB: 3, CB: 3, E: 3 },
+  notes: ''
+}
+const mixedState = {
+  ...initialAppState,
+  players: [legacyPlayer, customPlayer],
+  drives: [
+    {
+      ...createDrive('mixed-off-1', 'offense', 1),
+      assignments: {
+        ...createDrive('mixed-empty', 'offense', 1).assignments,
+        QB: 'p-jack',
+        RB: 'player-custom'
+      }
+    }
+  ],
+  availabilityByGame: { [gameId]: { 'p-jack': false, 'player-custom': false } }
+} as unknown as typeof initialAppState
+
+const mixed = migrateAppState(mixedState)
+assert.equal(mixed.players.some((player) => player.firstName === 'Jack'), false)
+assert.equal(mixed.players.some((player) => player.firstName === 'Rhett'), true)
+assert.equal(mixed.players.filter((player) => player.id === 'player-custom').length, 1)
+assert.equal(mixed.players.length, 12)
+assert.equal(mixed.drives[0].assignments.QB, 'p-rhett')
+assert.equal(mixed.drives[0].assignments.RB, 'player-custom')
+assert.equal(mixed.availabilityByGame[gameId]['player-custom'], false)
+
 console.log('logic tests passed')

@@ -466,6 +466,31 @@ export default function CoachApp() {
     setGameNoteDraft('')
   }
 
+  /** Drops a saved game and everything recorded in it. The last game always stays. */
+  function deleteGame(gameId: string) {
+    const remaining = games.filter((game) => game.id !== gameId)
+    if (remaining.length === 0) return
+
+    setGames(remaining)
+    setDrives((items) => items.filter((drive) => drive.gameId !== gameId))
+    setAvailabilityByGame((current) =>
+      Object.keys(current).reduce<Record<string, Record<string, boolean>>>((next, id) => {
+        if (id !== gameId) next[id] = current[id]
+        return next
+      }, {})
+    )
+
+    if (selectedGameId === gameId) {
+      const nextGame = remaining[remaining.length - 1]
+      const nextDrive = drives
+        .filter((drive) => drive.gameId === nextGame.id)
+        .sort((a, b) => driveSortValue(a) - driveSortValue(b))[0]
+      setSelectedGameId(nextGame.id)
+      setSelectedDriveId(nextDrive?.id || '')
+      setGameNoteDraft('')
+    }
+  }
+
   function addDrive(unit: Unit) {
     if (!selectedGame) return
     const drive = createDrive(uid('drive'), unit, nextDriveNumber(gameDrives, unit), selectedGame.id)
@@ -772,6 +797,7 @@ export default function CoachApp() {
             recordDriveResult={recordDriveResult}
             setDriveConversion={setDriveConversion}
             startNewGame={startNewGame}
+            deleteGame={() => selectedGame && deleteGame(selectedGame.id)}
             gameName={selectedGame?.name || ''}
             gameCount={games.length}
             slotPositions={slotPositions}
@@ -1235,6 +1261,7 @@ function GamedayPage({
   recordDriveResult,
   setDriveConversion,
   startNewGame,
+  deleteGame,
   gameName,
   gameCount,
   slotPositions,
@@ -1254,12 +1281,14 @@ function GamedayPage({
   recordDriveResult: (result: Exclude<DriveResult, ''>, advance?: boolean) => void
   setDriveConversion: (conversion: Conversion) => void
   startNewGame: (name: string) => void
+  deleteGame: () => void
   gameName: string
   gameCount: number
   slotPositions: SlotPositions
   availability: Record<string, boolean>
 }) {
   const [namingGame, setNamingGame] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   return (
     <div className="space-y-4 py-4">
@@ -1405,6 +1434,77 @@ function GamedayPage({
           ))}
         </div>
       </section>
+
+      <div className="flex flex-col items-center gap-1 pt-1">
+        <button
+          type="button"
+          onClick={() => setConfirmingDelete(true)}
+          disabled={gameCount <= 1}
+          className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-black text-[#c2412d] disabled:opacity-40"
+        >
+          <Trash2 size={15} />
+          Delete {gameName || 'this game'}
+        </button>
+        {gameCount <= 1 && <p className="text-xs font-bold text-[#53665c]">Start another game before deleting this one.</p>}
+      </div>
+
+      {confirmingDelete && (
+        <DeleteGameSheet
+          gameName={gameName}
+          driveCount={gameDrives.length}
+          teamScore={gameSummary.teamScore}
+          opponentScore={gameSummary.opponentScore}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            deleteGame()
+            setConfirmingDelete(false)
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
+function DeleteGameSheet({
+  gameName,
+  driveCount,
+  teamScore,
+  opponentScore,
+  onCancel,
+  onConfirm
+}: {
+  gameName: string
+  driveCount: number
+  teamScore: number
+  opponentScore: number
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+        <h3 className="font-display text-xl font-black">Delete {gameName || 'this game'}?</h3>
+        <p className="mt-1 text-sm font-bold text-[#53665c]">
+          This removes the game for good, along with its {driveCount} drive{driveCount === 1 ? '' : 's'}, results and
+          notes. Your roster and the lineups in other games are not touched.
+        </p>
+        <p className="mt-2 rounded-lg bg-[#f7f5ee] px-3 py-2 text-sm font-black">
+          Final score {teamScore}-{opponentScore}
+        </p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-3 font-black text-white"
+          >
+            <Trash2 size={16} />
+            Delete
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

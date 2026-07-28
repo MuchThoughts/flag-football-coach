@@ -15,6 +15,8 @@ const maxScale = 4
 const holdDuration = 550
 const drawStepDistance = 1.2
 const dragThreshold = 6
+/** A finger drifts while it is held, so a pending hold tolerates more than a drag does. */
+const holdDriftTolerance = 16
 const doubleTapWindow = 320
 
 function uid(prefix: string) {
@@ -47,15 +49,17 @@ function routePath(route: PlayRoute) {
   return route.points.map(toViewBox).join(' ')
 }
 
-function Football({ x, y }: FieldPoint) {
+function FootballIcon({ size }: { size: number }) {
   return (
-    <g transform={`translate(${x * 2} ${y}) rotate(-20)`}>
-      <ellipse rx="4.4" ry="2.8" fill="#8a4b23" stroke="#2f1b0d" strokeWidth="0.7" />
-      <line x1="-2.6" y1="0" x2="2.6" y2="0" stroke="#f7f5ee" strokeWidth="0.7" />
-      <line x1="-1.4" y1="-0.9" x2="-1.4" y2="0.9" stroke="#f7f5ee" strokeWidth="0.6" />
-      <line x1="0" y1="-1.1" x2="0" y2="1.1" stroke="#f7f5ee" strokeWidth="0.6" />
-      <line x1="1.4" y1="-0.9" x2="1.4" y2="0.9" stroke="#f7f5ee" strokeWidth="0.6" />
-    </g>
+    <svg viewBox="-10 -7 20 14" width={size} height={size * 0.7} aria-hidden>
+      <g transform="rotate(-20)">
+        <ellipse rx="9" ry="5.6" fill="#8a4b23" stroke="#2f1b0d" strokeWidth="1.4" />
+        <line x1="-5.2" y1="0" x2="5.2" y2="0" stroke="#f7f5ee" strokeWidth="1.4" />
+        <line x1="-2.8" y1="-1.8" x2="-2.8" y2="1.8" stroke="#f7f5ee" strokeWidth="1.2" />
+        <line x1="0" y1="-2.2" x2="0" y2="2.2" stroke="#f7f5ee" strokeWidth="1.2" />
+        <line x1="2.8" y1="-1.8" x2="2.8" y2="1.8" stroke="#f7f5ee" strokeWidth="1.2" />
+      </g>
+    </svg>
   )
 }
 
@@ -88,6 +92,7 @@ export default function PlaybookField({
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
   const [draft, setDraft] = useState<FieldPoint[] | null>(null)
   const [draggingSlot, setDraggingSlot] = useState<string | null>(null)
+  const [draggingFootball, setDraggingFootball] = useState<string | null>(null)
   const [snap, setSnap] = useState<SnapResult | null>(null)
   const [landscape, setLandscape] = useState(false)
   const [fullscreenOff, setFullscreenOff] = useState(false)
@@ -97,10 +102,21 @@ export default function PlaybookField({
   const strokeRef = useRef<{ startClientX: number; startClientY: number; started: boolean } | null>(null)
   const holdTimerRef = useRef<number | null>(null)
   const slotDragRef = useRef<{ slotCode: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
+  const footballDragRef = useRef<{ id: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
   const lastTapRef = useRef<{ routeId: string; at: number } | null>(null)
 
   const drawable = Boolean(onRoutesChange)
   const fullscreen = fullscreenOnLandscape && landscape && !fullscreenOff
+
+  /** Everything already on the field, for snapping and alignment guides. */
+  function markerPoints(exclude?: string): FieldPoint[] {
+    return [
+      ...PLAYBOOK_SLOTS.filter((slot) => slot.code !== exclude).map(
+        (slot) => positions[slot.code] || { x: slot.x, y: slot.y }
+      ),
+      ...footballs.filter((football) => football.id !== exclude).map((football) => ({ x: football.x, y: football.y }))
+    ]
+  }
 
   useEffect(() => {
     // A phone turned sideways: wide, and short enough that a desktop window is not mistaken for it.
@@ -160,6 +176,8 @@ export default function PlaybookField({
 
   function handlePointerDown(event: React.PointerEvent) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
+    // Without this a press-and-hold turns into a text selection instead of a football.
+    event.preventDefault()
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
 
     if (pointersRef.current.size === 2) {
@@ -184,7 +202,8 @@ export default function PlaybookField({
         strokeRef.current = null
         setDraft(null)
         navigator.vibrate?.(15)
-        onFootballsChange?.([...footballs, { id: uid('football'), ...point }])
+        const snapped = snapToField(point, markerPoints())
+        onFootballsChange?.([...footballs, { id: uid('football'), x: snapped.x, y: snapped.y }])
       }, holdDuration)
     }
   }
@@ -218,7 +237,10 @@ export default function PlaybookField({
     if (!stroke) return
 
     const moved = Math.hypot(event.clientX - stroke.startClientX, event.clientY - stroke.startClientY)
-    if (!stroke.started && moved < dragThreshold) return
+    if (!stroke.started) {
+      const holdPending = holdTimerRef.current !== null
+      if (moved < (holdPending ? holdDriftTolerance : dragThreshold)) return
+    }
 
     cancelHold()
 
@@ -284,8 +306,13 @@ export default function PlaybookField({
   const field = (
     <div
       ref={viewportRef}
-      className={`field-yardlines overflow-hidden ${viewportClass}`}
-      style={{ touchAction: 'none', aspectRatio: fullscreen ? undefined : '2 / 1' }}
+      className={`field-yardlines select-none overflow-hidden ${viewportClass}`}
+      style={{
+        touchAction: 'none',
+        WebkitUserSelect: 'none',
+        WebkitTouchCallout: 'none',
+        aspectRatio: fullscreen ? undefined : '2 / 1'
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -353,9 +380,6 @@ export default function PlaybookField({
             />
           )}
 
-          {footballs.map((football) => (
-            <Football key={football.id} x={football.x} y={football.y} />
-          ))}
         </svg>
 
         {PLAYBOOK_SLOTS.map((slot) => {
@@ -394,15 +418,12 @@ export default function PlaybookField({
                   capturePointer(event.currentTarget as HTMLElement, event.pointerId)
                 }
 
-                const others = PLAYBOOK_SLOTS.filter((item) => item.code !== drag.slotCode).map(
-                  (item) => positions[item.code] || { x: item.x, y: item.y }
-                )
                 const snapped = snapToField(
                   {
                     x: drag.originX + (deltaX / (rect.width * view.scale)) * 100,
                     y: drag.originY + (deltaY / (rect.height * view.scale)) * 100
                   },
-                  others
+                  markerPoints(drag.slotCode)
                 )
                 setSnap(snapped)
                 onMovePosition(drag.slotCode, { x: snapped.x, y: snapped.y })
@@ -421,6 +442,75 @@ export default function PlaybookField({
                 }`}
               >
                 {slot.shortName}
+              </div>
+            </div>
+          )
+        })}
+
+        {footballs.map((football) => {
+          const isDragging = draggingFootball === football.id
+          return (
+            <div
+              key={football.id}
+              className={`absolute -translate-x-1/2 -translate-y-1/2 ${isDragging ? 'z-20 scale-125' : 'z-10'}`}
+              style={{ left: `${football.x}%`, top: `${football.y}%` }}
+              onPointerDown={(event) => {
+                if (!onFootballsChange) return
+                if (event.pointerType === 'mouse' && event.button !== 0) return
+                // The field would otherwise take this as the start of a new route.
+                event.stopPropagation()
+                event.preventDefault()
+                footballDragRef.current = {
+                  id: football.id,
+                  startX: event.clientX,
+                  startY: event.clientY,
+                  originX: football.x,
+                  originY: football.y,
+                  moved: false
+                }
+              }}
+              onPointerMove={(event) => {
+                const drag = footballDragRef.current
+                const rect = viewportRef.current?.getBoundingClientRect()
+                if (!drag || !rect || !onFootballsChange) return
+                event.stopPropagation()
+
+                const deltaX = event.clientX - drag.startX
+                const deltaY = event.clientY - drag.startY
+                if (!drag.moved && Math.hypot(deltaX, deltaY) < dragThreshold) return
+                if (!drag.moved) {
+                  drag.moved = true
+                  setDraggingFootball(drag.id)
+                  capturePointer(event.currentTarget as HTMLElement, event.pointerId)
+                }
+
+                const snapped = snapToField(
+                  {
+                    x: drag.originX + (deltaX / (rect.width * view.scale)) * 100,
+                    y: drag.originY + (deltaY / (rect.height * view.scale)) * 100
+                  },
+                  markerPoints(drag.id)
+                )
+                setSnap(snapped)
+                onFootballsChange(
+                  footballs.map((item) => (item.id === drag.id ? { ...item, x: snapped.x, y: snapped.y } : item))
+                )
+              }}
+              onPointerUp={(event) => {
+                if (!footballDragRef.current) return
+                event.stopPropagation()
+                footballDragRef.current = null
+                setDraggingFootball(null)
+                setSnap(null)
+              }}
+              onPointerCancel={() => {
+                footballDragRef.current = null
+                setDraggingFootball(null)
+                setSnap(null)
+              }}
+            >
+              <div className={`flex items-center justify-center ${onFootballsChange ? 'cursor-grab p-2' : ''}`}>
+                <FootballIcon size={compact ? 18 : 26} />
               </div>
             </div>
           )

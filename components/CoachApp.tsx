@@ -30,11 +30,36 @@ import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import { autoFillDrive, computeUsage, getDriveWarnings, isPlayerAvailable } from '@/lib/fair-play'
 import { getGameSummary } from '@/lib/game-summary'
 import { migrateAppState } from '@/lib/migrate-state'
+import {
+  countPlaysByFormation,
+  defaultFormationPositions,
+  emptyPlayFilters,
+  filterPlays,
+  PLAY_AREAS,
+  PLAY_TYPES,
+  PLAYBOOK_SLOTS,
+  type PlayFilters
+} from '@/lib/playbook'
 import { getSlotPosition, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
-import type { AppSettings, AppState, Conversion, Drive, DriveNote, DriveResult, Game, Player, SlotPositions, Unit } from '@/lib/types'
+import type {
+  AppSettings,
+  AppState,
+  Conversion,
+  Drive,
+  DriveNote,
+  DriveResult,
+  Formation,
+  Game,
+  PlayArea,
+  PlaybookPlay,
+  Player,
+  PlayType,
+  SlotPositions,
+  Unit
+} from '@/lib/types'
 
-type Workflow = 'planning' | 'gameday'
+type Workflow = 'planning' | 'gameday' | 'playbook'
 type SyncStatus = 'local' | 'signed_out' | 'loading' | 'synced' | 'saving' | 'error'
 
 const storageKey = 'flag-football-coach:v3'
@@ -80,11 +105,13 @@ function shortResult(result: DriveResult) {
 }
 
 function workflowFromPath(pathname: string): Workflow {
-  return pathname.includes('/gameday') ? 'gameday' : 'planning'
+  if (pathname.includes('/gameday')) return 'gameday'
+  if (pathname.includes('/playbook')) return 'playbook'
+  return 'planning'
 }
 
 function workflowPath(workflow: Workflow) {
-  return workflow === 'gameday' ? '/gameday' : '/planning'
+  return `/${workflow}`
 }
 
 export default function CoachApp() {
@@ -98,6 +125,7 @@ export default function CoachApp() {
   const [practices, setPractices] = useState(initialAppState.practices)
   const [practiceTemplates, setPracticeTemplates] = useState(initialAppState.practiceTemplates)
   const [plays, setPlays] = useState(initialAppState.plays)
+  const [formations, setFormations] = useState(initialAppState.formations)
   const [lineupTemplates, setLineupTemplates] = useState(initialAppState.lineupTemplates)
   const [slotPositions, setSlotPositions] = useState(initialAppState.slotPositions)
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppState.appSettings)
@@ -179,6 +207,7 @@ export default function CoachApp() {
       practices,
       practiceTemplates,
       plays,
+      formations,
       lineupTemplates,
       slotPositions,
       appSettings
@@ -197,6 +226,7 @@ export default function CoachApp() {
     setPractices(saved.practices)
     setPracticeTemplates(saved.practiceTemplates)
     setPlays(saved.plays)
+    setFormations(saved.formations)
     setLineupTemplates(saved.lineupTemplates)
     setSlotPositions(saved.slotPositions)
     setAppSettings(membership ? appSettingsFromMembership(membership, saved.appSettings) : saved.appSettings)
@@ -309,7 +339,7 @@ export default function CoachApp() {
           setSyncMessage(error instanceof Error ? error.message : 'Cloud save failed')
         })
     }, 700)
-  }, [appSettings, availabilityByGame, drives, games, lineupTemplates, loaded, players, plays, practiceTemplates, practices, selectedDriveId, selectedGameId, slotPositions, team])
+  }, [appSettings, availabilityByGame, drives, formations, games, lineupTemplates, loaded, players, plays, practiceTemplates, practices, selectedDriveId, selectedGameId, slotPositions, team])
 
   useEffect(() => {
     if (!syncReady || !syncTeamId || !syncUserId) return
@@ -570,6 +600,45 @@ export default function CoachApp() {
     )
   }
 
+  /** Creates or updates a play, keeping the original created date on an edit. */
+  function savePlay(draft: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) {
+    const now = new Date().toISOString()
+    setPlays((items) => {
+      const existing = items.find((play) => play.id === draft.id)
+      const play: PlaybookPlay = {
+        ...draft,
+        teamId: team.id,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now
+      }
+      return existing ? items.map((item) => (item.id === play.id ? play : item)) : [...items, play]
+    })
+  }
+
+  function deletePlay(playId: string) {
+    setPlays((items) => items.filter((play) => play.id !== playId))
+  }
+
+  function saveFormation(draft: Omit<Formation, 'teamId' | 'createdAt' | 'updatedAt'>) {
+    const now = new Date().toISOString()
+    setFormations((items) => {
+      const existing = items.find((formation) => formation.id === draft.id)
+      const formation: Formation = {
+        ...draft,
+        teamId: team.id,
+        createdAt: existing?.createdAt || now,
+        updatedAt: now
+      }
+      return existing ? items.map((item) => (item.id === formation.id ? formation : item)) : [...items, formation]
+    })
+  }
+
+  /** Plays built on a deleted formation would have nothing to draw, so they go too. */
+  function deleteFormation(formationId: string) {
+    setFormations((items) => items.filter((formation) => formation.id !== formationId))
+    setPlays((items) => items.filter((play) => play.formationId !== formationId))
+  }
+
   function moveSlot(unit: Unit, slotCode: string, position: { x: number; y: number }) {
     setSlotPositions((current) => ({ ...current, [slotPositionKey(unit, slotCode)]: position }))
   }
@@ -781,6 +850,15 @@ export default function CoachApp() {
             draggingPlayerId={draggingPlayerId}
             setDraggingPlayerId={setDraggingPlayerId}
           />
+        ) : workflow === 'playbook' ? (
+          <PlaybookPage
+            plays={plays}
+            formations={formations}
+            savePlay={savePlay}
+            deletePlay={deletePlay}
+            saveFormation={saveFormation}
+            deleteFormation={deleteFormation}
+          />
         ) : (
           <GamedayPage
             gameDrives={gameDrives}
@@ -807,9 +885,10 @@ export default function CoachApp() {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#d8ded5] bg-white/95 px-3 py-2 shadow-[0_-10px_30px_rgba(16,32,26,0.12)] backdrop-blur safe-bottom">
-        <div className="mx-auto grid max-w-md grid-cols-2 gap-2">
+        <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
           <BottomNavButton active={workflow === 'planning'} label="Planning" onClick={() => navigateWorkflow('planning')} />
           <BottomNavButton active={workflow === 'gameday'} label="Gameday" onClick={() => navigateWorkflow('gameday')} />
+          <BottomNavButton active={workflow === 'playbook'} label="Playbook" onClick={() => navigateWorkflow('playbook')} />
         </div>
       </nav>
     </main>
@@ -1242,6 +1321,628 @@ function PlanningPage({
           </>
         )}
       </section>
+    </div>
+  )
+}
+
+/**
+ * The formation diagram: one small circle per offensive position, labelled with
+ * the position only. When editable, circles drag around the field.
+ */
+function FormationField({
+  positions,
+  onMove,
+  compact = false
+}: {
+  positions: SlotPositions
+  onMove?: (slotCode: string, position: { x: number; y: number }) => void
+  compact?: boolean
+}) {
+  const fieldRef = useRef<HTMLDivElement | null>(null)
+  const [draggingSlot, setDraggingSlot] = useState<string | null>(null)
+  const dragRef = useRef<{ slotCode: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
+
+  const height = compact ? 'h-[190px]' : 'h-[330px] sm:h-[380px]'
+  const circleSize = compact ? 'h-8 w-8 text-[11px]' : 'h-11 w-11 text-sm'
+
+  return (
+    <div
+      ref={fieldRef}
+      className={`field-yardlines relative ${height} overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field`}
+    >
+      <div className="absolute inset-x-0 top-1/2 h-px bg-[#f6f2df]/70" />
+      {PLAYBOOK_SLOTS.map((slot) => {
+        const position = positions[slot.code] || { x: slot.x, y: slot.y }
+        const isDragging = draggingSlot === slot.code
+        return (
+          <div
+            key={slot.code}
+            className="absolute -translate-x-1/2 -translate-y-1/2"
+            style={{ left: `${position.x}%`, top: `${position.y}%`, touchAction: onMove ? 'none' : undefined }}
+            onPointerDown={(event) => {
+              if (!onMove) return
+              if (event.pointerType === 'mouse' && event.button !== 0) return
+              dragRef.current = {
+                slotCode: slot.code,
+                startX: event.clientX,
+                startY: event.clientY,
+                originX: position.x,
+                originY: position.y,
+                moved: false
+              }
+            }}
+            onPointerMove={(event) => {
+              const drag = dragRef.current
+              const field = fieldRef.current
+              if (!drag || !field || !onMove) return
+
+              const deltaX = event.clientX - drag.startX
+              const deltaY = event.clientY - drag.startY
+              if (!drag.moved && Math.hypot(deltaX, deltaY) < markerDragThreshold) return
+
+              if (!drag.moved) {
+                drag.moved = true
+                setDraggingSlot(drag.slotCode)
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.setPointerCapture(event.pointerId)
+                }
+              }
+
+              const rect = field.getBoundingClientRect()
+              onMove(drag.slotCode, {
+                x: clampPercent(drag.originX + (deltaX / rect.width) * 100, 6),
+                y: clampPercent(drag.originY + (deltaY / rect.height) * 100, 8)
+              })
+            }}
+            onPointerUp={() => {
+              dragRef.current = null
+              setDraggingSlot(null)
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null
+              setDraggingSlot(null)
+            }}
+          >
+            <div
+              className={`flex ${circleSize} select-none items-center justify-center rounded-full border-2 border-[#10201a] bg-white font-black text-[#10201a] shadow-sm ${
+                isDragging ? 'scale-110 ring-2 ring-[#f7c948]' : ''
+              }`}
+            >
+              {slot.shortName}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function FilterChips<T extends string>({
+  options,
+  value,
+  onChange
+}: {
+  options: Array<{ value: T; label: string }>
+  value: T
+  onChange: (value: T) => void
+}) {
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          onClick={() => onChange(option.value)}
+          className={`shrink-0 rounded-full border px-3 py-1 text-xs font-black uppercase ${
+            value === option.value ? 'border-[#10201a] bg-[#10201a] text-white' : 'border-[#d8ded5] bg-white text-[#53665c]'
+          }`}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function PlaybookPage({
+  plays,
+  formations,
+  savePlay,
+  deletePlay,
+  saveFormation,
+  deleteFormation
+}: {
+  plays: PlaybookPlay[]
+  formations: Formation[]
+  savePlay: (play: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  deletePlay: (playId: string) => void
+  saveFormation: (formation: Omit<Formation, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  deleteFormation: (formationId: string) => void
+}) {
+  const [tab, setTab] = useState<'plays' | 'formations'>('plays')
+  const [filters, setFilters] = useState<PlayFilters>(emptyPlayFilters)
+  const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
+  const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
+  const [openPlayId, setOpenPlayId] = useState<string | null>(null)
+
+  const visiblePlays = filterPlays(plays, formations, filters)
+  const openPlay = plays.find((play) => play.id === openPlayId)
+
+  return (
+    <div className="space-y-4 py-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-xl font-black">Playbook</h2>
+          <p className="text-sm font-bold text-[#53665c]">
+            {plays.length} play{plays.length === 1 ? '' : 's'} · {formations.length} formation
+            {formations.length === 1 ? '' : 's'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => (tab === 'plays' ? setEditingPlay('new') : setEditingFormation('new'))}
+          disabled={tab === 'plays' && formations.length === 0}
+          aria-label={tab === 'plays' ? 'New play' : 'New formation'}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#10201a] text-white disabled:opacity-40"
+        >
+          <Plus size={20} />
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => setTab('plays')}
+          className={`rounded-lg px-3 py-2 text-sm font-black ${tab === 'plays' ? 'bg-[#10201a] text-white' : 'bg-[#f7f5ee] text-[#53665c]'}`}
+        >
+          Plays
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('formations')}
+          className={`rounded-lg px-3 py-2 text-sm font-black ${
+            tab === 'formations' ? 'bg-[#10201a] text-white' : 'bg-[#f7f5ee] text-[#53665c]'
+          }`}
+        >
+          Formations
+        </button>
+      </div>
+
+      {tab === 'plays' ? (
+        <section className="space-y-3">
+          <input
+            value={filters.search}
+            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+            placeholder="Search plays"
+            aria-label="Search plays"
+            className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+          />
+
+          <FilterChips
+            value={filters.type}
+            onChange={(type) => setFilters({ ...filters, type })}
+            options={[
+              { value: 'all', label: 'All' },
+              ...PLAY_TYPES.map((type) => ({ value: type, label: type }))
+            ]}
+          />
+          <FilterChips
+            value={filters.area}
+            onChange={(area) => setFilters({ ...filters, area })}
+            options={[
+              { value: 'all', label: 'Any area' },
+              ...PLAY_AREAS.map((area) => ({ value: area, label: area }))
+            ]}
+          />
+          <FilterChips
+            value={filters.formationId}
+            onChange={(formationId) => setFilters({ ...filters, formationId })}
+            options={[
+              { value: 'all', label: 'Any formation' },
+              ...formations.map((formation) => ({ value: formation.id, label: formation.name }))
+            ]}
+          />
+
+          {formations.length === 0 && (
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+              Build a formation first, then plays can be drawn from it.
+            </p>
+          )}
+
+          <div className="space-y-2">
+            {formations.length > 0 && visiblePlays.length === 0 && (
+              <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+                {plays.length === 0 ? 'No plays yet.' : 'No plays match those filters.'}
+              </p>
+            )}
+            {visiblePlays.map((play) => {
+              const formation = formations.find((item) => item.id === play.formationId)
+              return (
+                <button
+                  key={play.id}
+                  type="button"
+                  onClick={() => setOpenPlayId(play.id)}
+                  className="w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-black">{play.name}</span>
+                    <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
+                      {play.type}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs font-black uppercase text-[#53665c]">
+                    {formation?.name || 'No formation'} · {play.area}
+                  </p>
+                  {play.notes && <p className="mt-1 truncate text-sm font-bold text-[#53665c]">{play.notes}</p>}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+      ) : (
+        <section className="space-y-2">
+          {formations.length === 0 && (
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+              No formations yet. Tap + to place the positions.
+            </p>
+          )}
+          {formations.map((formation) => (
+            <div key={formation.id} className="rounded-lg border border-[#d8ded5] bg-white p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate font-black">{formation.name}</p>
+                  <p className="text-xs font-bold text-[#53665c]">
+                    {countPlaysByFormation(plays, formation.id)} play
+                    {countPlaysByFormation(plays, formation.id) === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingFormation(formation)}
+                  className="shrink-0 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black"
+                >
+                  Edit
+                </button>
+              </div>
+              <div className="mt-2">
+                <FormationField positions={formation.positions} compact />
+              </div>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {editingPlay && (
+        <PlayEditorSheet
+          play={editingPlay === 'new' ? undefined : editingPlay}
+          formations={formations}
+          onSave={(play) => {
+            savePlay(play)
+            setEditingPlay(null)
+          }}
+          onDelete={
+            editingPlay === 'new'
+              ? undefined
+              : () => {
+                  deletePlay(editingPlay.id)
+                  setEditingPlay(null)
+                  setOpenPlayId(null)
+                }
+          }
+          onClose={() => setEditingPlay(null)}
+        />
+      )}
+
+      {editingFormation && (
+        <FormationEditorSheet
+          formation={editingFormation === 'new' ? undefined : editingFormation}
+          playCount={editingFormation === 'new' ? 0 : countPlaysByFormation(plays, editingFormation.id)}
+          onSave={(formation) => {
+            saveFormation(formation)
+            setEditingFormation(null)
+          }}
+          onDelete={
+            editingFormation === 'new'
+              ? undefined
+              : () => {
+                  deleteFormation(editingFormation.id)
+                  setEditingFormation(null)
+                }
+          }
+          onClose={() => setEditingFormation(null)}
+        />
+      )}
+
+      {openPlay && (
+        <PlayDetailSheet
+          play={openPlay}
+          formation={formations.find((item) => item.id === openPlay.formationId)}
+          onEdit={() => {
+            setEditingPlay(openPlay)
+            setOpenPlayId(null)
+          }}
+          onClose={() => setOpenPlayId(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function PlayDetailSheet({
+  play,
+  formation,
+  onEdit,
+  onClose
+}: {
+  play: PlaybookPlay
+  formation?: Formation
+  onEdit: () => void
+  onClose: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-display text-xl font-black">{play.name}</h3>
+            <p className="text-xs font-black uppercase text-[#53665c]">
+              {formation?.name || 'No formation'} · {play.type} · {play.area}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-3">
+          <FormationField positions={formation?.positions || {}} />
+        </div>
+
+        {play.notes && <p className="mt-3 whitespace-pre-wrap text-sm font-bold text-[#53665c]">{play.notes}</p>}
+
+        <button type="button" onClick={onEdit} className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
+          Edit Play
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function PlayEditorSheet({
+  play,
+  formations,
+  onSave,
+  onDelete,
+  onClose
+}: {
+  play?: PlaybookPlay
+  formations: Formation[]
+  onSave: (play: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  onDelete?: () => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(play?.name || '')
+  const [formationId, setFormationId] = useState(play?.formationId || formations[0]?.id || '')
+  const [type, setType] = useState<PlayType>(play?.type || 'pass')
+  const [area, setArea] = useState<PlayArea>(play?.area || 'middle')
+  const [notes, setNotes] = useState(play?.notes || '')
+
+  const formation = formations.find((item) => item.id === formationId)
+
+  function submit() {
+    if (!name.trim() || !formationId) return
+    onSave({ id: play?.id || uid('play'), name: name.trim(), formationId, type, area, notes: notes.trim() })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-xl font-black">{play ? 'Edit Play' : 'New Play'}</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <input
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Play name"
+          aria-label="Play name"
+          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+        />
+
+        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Formation</p>
+        <select
+          value={formationId}
+          onChange={(event) => setFormationId(event.target.value)}
+          aria-label="Formation"
+          className="mt-1 w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 font-black outline-none"
+        >
+          {formations.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+
+        <div className="mt-2">
+          <FormationField positions={formation?.positions || {}} compact />
+        </div>
+
+        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Pass or run</p>
+        <div className="mt-1 grid grid-cols-2 gap-2">
+          {PLAY_TYPES.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setType(option)}
+              className={`rounded-lg border px-3 py-3 font-black capitalize ${
+                type === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+
+        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Area of attack</p>
+        <div className="mt-1 grid grid-cols-3 gap-2">
+          {PLAY_AREAS.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setArea(option)}
+              className={`rounded-lg border px-2 py-3 text-sm font-black capitalize ${
+                area === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
+              }`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+
+        <textarea
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+          rows={3}
+          placeholder="Routes, reads, when to call it"
+          aria-label="Play notes"
+          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 text-sm outline-none focus:border-[#1f7a4d]"
+        />
+
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!name.trim() || !formationId}
+          className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40"
+        >
+          Save Play
+        </button>
+        {onDelete && (
+          <button type="button" onClick={onDelete} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-black text-[#c2412d]">
+            <Trash2 size={15} />
+            Delete Play
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function FormationEditorSheet({
+  formation,
+  playCount,
+  onSave,
+  onDelete,
+  onClose
+}: {
+  formation?: Formation
+  playCount: number
+  onSave: (formation: Omit<Formation, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  onDelete?: () => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(formation?.name || '')
+  const [positions, setPositions] = useState<SlotPositions>(
+    formation ? { ...defaultFormationPositions(), ...formation.positions } : defaultFormationPositions()
+  )
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-display text-xl font-black">{formation ? 'Edit Formation' : 'New Formation'}</h3>
+            <p className="text-sm font-bold text-[#53665c]">Drag the circles to place your positions.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Formation name"
+          aria-label="Formation name"
+          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+        />
+
+        <div className="mt-3">
+          <FormationField
+            positions={positions}
+            onMove={(slotCode, position) => setPositions((current) => ({ ...current, [slotCode]: position }))}
+          />
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setPositions(defaultFormationPositions())}
+            className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black"
+          >
+            Reset Spots
+          </button>
+          <button
+            type="button"
+            onClick={() => onSave({ id: formation?.id || uid('formation'), name: name.trim() || 'Formation', positions })}
+            className="rounded-lg bg-[#10201a] px-3 py-3 font-black text-white"
+          >
+            Save Formation
+          </button>
+        </div>
+
+        {onDelete && (
+          <div className="mt-2">
+            {confirmingDelete ? (
+              <div className="rounded-lg border border-[#c2412d] p-3">
+                <p className="text-sm font-bold text-[#53665c]">
+                  Deleting this formation also deletes its {playCount} play{playCount === 1 ? '' : 's'}.
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingDelete(false)}
+                    className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black"
+                  >
+                    Cancel
+                  </button>
+                  <button type="button" onClick={onDelete} className="rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white">
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-black text-[#c2412d]"
+              >
+                <Trash2 size={15} />
+                Delete Formation
+              </button>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

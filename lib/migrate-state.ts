@@ -1,6 +1,8 @@
-import type { AppState, Drive, Game, Player } from './types'
-
+import type { AppState, Drive, Formation, Game, PlayArea, PlaybookPlay, Player, PlayType } from './types'
+import { defaultFormationPositions } from './playbook'
 import { initialAppState, samplePlayers } from './sample-data'
+
+const legacyTimestamp = '2026-01-01T00:00:00.000Z'
 
 const legacySamplePlayerIds = [
   'p-jack',
@@ -117,6 +119,68 @@ function replaceDemoRoster(state: AppState): AppState {
   }
 }
 
+interface LegacyPlay {
+  id: string
+  teamId: string
+  name: string
+  formation?: string
+  positions?: string
+  notes?: string
+  tags?: string[]
+}
+
+function legacyPlayArea(tags: string[]): PlayArea {
+  if (tags.includes('deep')) return 'deep'
+  if (tags.includes('outside') || tags.includes('sideline') || tags.includes('sidelines')) return 'sidelines'
+  return 'middle'
+}
+
+/**
+ * Plays used to carry a formation name as free text and loose tags. Turn each
+ * distinct name into a real formation and map the tags onto type and area.
+ */
+function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: Formation[] } {
+  const formations = [...(state.formations || [])]
+  const plays = (state.plays || []).map((play) => {
+    const legacy = play as unknown as LegacyPlay
+    if (play.formationId && play.type && play.area) {
+      return { ...play, notes: play.notes || '' }
+    }
+
+    const formationName = legacy.formation?.trim() || 'Balanced'
+    let formation = formations.find((item) => item.name.toLowerCase() === formationName.toLowerCase())
+    if (!formation) {
+      formation = {
+        id: `formation-${formationName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+        teamId: legacy.teamId,
+        name: formationName,
+        positions: defaultFormationPositions(),
+        createdAt: legacyTimestamp,
+        updatedAt: legacyTimestamp
+      }
+      formations.push(formation)
+    }
+
+    const tags = legacy.tags || []
+    // The old free-text routes are worth keeping, so fold them into the notes.
+    const notes = [legacy.positions, legacy.notes].map((part) => part?.trim()).filter(Boolean).join(' ')
+
+    return {
+      id: legacy.id,
+      teamId: legacy.teamId,
+      name: legacy.name,
+      formationId: formation.id,
+      type: tags.includes('run') ? ('run' as PlayType) : ('pass' as PlayType),
+      area: legacyPlayArea(tags),
+      notes,
+      createdAt: legacyTimestamp,
+      updatedAt: legacyTimestamp
+    }
+  })
+
+  return { plays, formations }
+}
+
 /**
  * Brings saved states forward: drops jersey numbers, last names and opponents,
  * and upgrades the demo roster to the real one.
@@ -137,13 +201,18 @@ export function migrateAppState(saved: AppState): AppState {
     practices: saved.practices || [],
     practiceTemplates: saved.practiceTemplates || initialAppState.practiceTemplates,
     plays: saved.plays || [],
+    formations: saved.formations || [],
     lineupTemplates: saved.lineupTemplates || [],
     slotPositions: saved.slotPositions || {},
     appSettings: saved.appSettings || initialAppState.appSettings
   })
 
+  const playbook = migratePlaybook(state)
+
   return {
     ...state,
-    players: state.players.map(normalizePlayer)
+    players: state.players.map(normalizePlayer),
+    plays: playbook.plays,
+    formations: playbook.formations
   }
 }

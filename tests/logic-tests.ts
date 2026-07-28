@@ -5,11 +5,18 @@ import { autoFillDrive, computeUsage, getDriveWarnings, isSlotFillable } from '.
 import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { applyLineupTemplateToDrive } from '../lib/lineup-templates'
 import { migrateAppState } from '../lib/migrate-state'
+import {
+  countPlaysByFormation,
+  defaultFormationPositions,
+  emptyPlayFilters,
+  filterPlays,
+  getFormationPosition
+} from '../lib/playbook'
 import { OFFENSE_SLOTS, DEFENSE_SLOTS, getSlotPosition, slotPositionKey } from '../lib/positions'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
-import type { LineupTemplate } from '../lib/types'
+import type { LineupTemplate, PlaybookPlay } from '../lib/types'
 
 function assignedIds(assignments: Record<string, string | null>) {
   return Object.values(assignments).filter(Boolean)
@@ -334,5 +341,74 @@ const namedGame = migrateAppState({
   games: [{ ...initialAppState.games[0], name: 'Season Opener' }]
 } as unknown as typeof initialAppState)
 assert.equal(namedGame.games[0].name, 'Season Opener')
+
+// ---- Playbook ----
+assert.equal(initialAppState.formations.length, 2)
+assert.equal(
+  initialAppState.plays.every((play) => initialAppState.formations.some((formation) => formation.id === play.formationId)),
+  true
+)
+assert.deepEqual(Object.keys(defaultFormationPositions()).sort(), ['1', '2', '3', '4', 'C', 'QB', 'RB'])
+
+const trips = initialAppState.formations.find((formation) => formation.name === 'Trips Right')!
+assert.deepEqual(getFormationPosition('3', trips), { x: 76, y: 70 })
+// A position the formation does not place falls back to its default spot.
+assert.deepEqual(getFormationPosition('QB', { ...trips, positions: {} }), { x: 50, y: 58 })
+
+const catalog: PlaybookPlay[] = [
+  { ...initialAppState.plays[0], id: 'p1', name: 'Sweep Right', type: 'run' as const, area: 'sidelines' as const, formationId: 'formation-balanced', notes: 'edge crashes' },
+  { ...initialAppState.plays[0], id: 'p2', name: 'Post Wheel', type: 'pass' as const, area: 'deep' as const, formationId: 'formation-trips-right', notes: '' },
+  { ...initialAppState.plays[0], id: 'p3', name: 'Dive', type: 'run' as const, area: 'middle' as const, formationId: 'formation-balanced', notes: '' }
+]
+const ids = (result: PlaybookPlay[]) => result.map((play) => play.id).join(',')
+
+assert.equal(ids(filterPlays(catalog, initialAppState.formations, emptyPlayFilters)), 'p1,p2,p3')
+assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, type: 'run' })), 'p1,p3')
+assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, area: 'deep' })), 'p2')
+assert.equal(
+  ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, formationId: 'formation-balanced' })),
+  'p1,p3'
+)
+// Search covers name, notes and the formation name.
+assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, search: 'sweep' })), 'p1')
+assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, search: 'CRASHES' })), 'p1')
+assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, search: 'trips' })), 'p2')
+assert.equal(
+  ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, search: 'e', type: 'run', area: 'sidelines' })),
+  'p1'
+)
+assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, search: 'nothing here' })), '')
+assert.equal(countPlaysByFormation(catalog, 'formation-balanced'), 2)
+
+// Plays saved with a free-text formation and tags become real formations.
+const legacyPlaybook = migrateAppState({
+  ...initialAppState,
+  formations: undefined,
+  plays: [
+    { id: 'old-1', teamId: 'team-wildcats', name: 'Sweep Right', formation: 'Balanced', positions: 'RB motion right', notes: 'edge crashes', tags: ['run', 'outside'] },
+    { id: 'old-2', teamId: 'team-wildcats', name: 'Slot Cross', formation: 'Trips Right', positions: '2 shallow', notes: '', tags: ['pass', 'middle'] },
+    { id: 'old-3', teamId: 'team-wildcats', name: 'Go Route', formation: 'Balanced', positions: '', notes: '', tags: ['pass', 'deep'] }
+  ]
+} as unknown as typeof initialAppState)
+
+assert.equal(legacyPlaybook.formations.length, 2)
+assert.deepEqual(legacyPlaybook.formations.map((formation) => formation.name).sort(), ['Balanced', 'Trips Right'])
+assert.equal(legacyPlaybook.plays[0].type, 'run')
+assert.equal(legacyPlaybook.plays[0].area, 'sidelines')
+assert.equal(legacyPlaybook.plays[0].notes, 'RB motion right edge crashes')
+assert.equal(legacyPlaybook.plays[1].area, 'middle')
+assert.equal(legacyPlaybook.plays[2].type, 'pass')
+assert.equal(legacyPlaybook.plays[2].area, 'deep')
+// Both Balanced plays point at the same generated formation.
+assert.equal(legacyPlaybook.plays[0].formationId, legacyPlaybook.plays[2].formationId)
+assert.equal(
+  legacyPlaybook.plays.every((play) => legacyPlaybook.formations.some((formation) => formation.id === play.formationId)),
+  true
+)
+
+// Already-migrated playbooks are left alone.
+const stablePlaybook = migrateAppState(initialAppState)
+assert.deepEqual(stablePlaybook.plays.map((play) => play.id), initialAppState.plays.map((play) => play.id))
+assert.deepEqual(stablePlaybook.formations.map((f) => f.id), initialAppState.formations.map((f) => f.id))
 
 console.log('logic tests passed')

@@ -1,8 +1,10 @@
 import type { AppState, Drive, DriveNote, Player, Unit } from './types'
 import { createEmptyAssignments } from './positions'
+import { defaultFormationPositions } from './playbook'
 
 const teamId = 'team-wildcats'
 const gameId = 'game-1'
+const seedTimestamp = '2026-09-01T00:00:00.000Z'
 
 const emptyNote = (): DriveNote => ({
   whatWorked: '',
@@ -153,19 +155,47 @@ export const initialAppState: AppState = {
       id: 'play-1',
       teamId,
       name: 'Sweep Right',
-      formation: 'Balanced',
-      positions: 'RB motion right, 3 clears, 4 stalks space',
-      notes: 'Good early-down call when edge defender crashes.',
-      tags: ['run', 'outside']
+      formationId: 'formation-balanced',
+      type: 'run',
+      area: 'sidelines',
+      notes: 'RB motion right, 3 clears, 4 stalks space. Good early-down call when the edge defender crashes.',
+      createdAt: seedTimestamp,
+      updatedAt: seedTimestamp
     },
     {
       id: 'play-2',
       teamId,
       name: 'Slot Cross',
-      formation: 'Trips Right',
-      positions: '2 shallow, 3 dig, 4 clear, RB check release',
-      notes: 'Use when QB has time and middle is open.',
-      tags: ['pass', 'middle']
+      formationId: 'formation-trips-right',
+      type: 'pass',
+      area: 'middle',
+      notes: '2 shallow, 3 dig, 4 clear, RB check release. Use when the QB has time and the middle is open.',
+      createdAt: seedTimestamp,
+      updatedAt: seedTimestamp
+    }
+  ],
+  formations: [
+    {
+      id: 'formation-balanced',
+      teamId,
+      name: 'Balanced',
+      positions: defaultFormationPositions(),
+      createdAt: seedTimestamp,
+      updatedAt: seedTimestamp
+    },
+    {
+      id: 'formation-trips-right',
+      teamId,
+      name: 'Trips Right',
+      positions: {
+        ...defaultFormationPositions(),
+        '1': { x: 12, y: 66 },
+        '2': { x: 62, y: 63 },
+        '3': { x: 76, y: 70 },
+        '4': { x: 89, y: 78 }
+      },
+      createdAt: seedTimestamp,
+      updatedAt: seedTimestamp
     }
   ],
   lineupTemplates: [],

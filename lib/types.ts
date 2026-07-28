@@ -110,14 +110,31 @@ export interface PracticeTemplate {
   updatedAt: string
 }
 
+export type PlayType = 'pass' | 'run'
+
+/** Where the play is aimed. */
+export type PlayArea = 'deep' | 'sidelines' | 'middle'
+
+/** A reusable set of marker positions plays are drawn from. */
+export interface Formation {
+  id: string
+  teamId: string
+  name: string
+  positions: SlotPositions
+  createdAt: string
+  updatedAt: string
+}
+
 export interface PlaybookPlay {
   id: string
   teamId: string
   name: string
-  formation: string
-  positions: string
+  formationId: string
+  type: PlayType
+  area: PlayArea
   notes: string
-  tags: string[]
+  createdAt: string
+  updatedAt: string
 }
 
 export interface LineupTemplate {
@@ -147,6 +164,7 @@ export interface AppState {
   practices: PracticePlan[]
   practiceTemplates: PracticeTemplate[]
   plays: PlaybookPlay[]
+  formations: Formation[]
   lineupTemplates: LineupTemplate[]
   slotPositions: SlotPositions
   appSettings: AppSettings

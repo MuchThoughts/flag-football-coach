@@ -367,6 +367,50 @@ export default function CoachApp() {
     )
   }
 
+  /** Removes a player from the team for good, along with every reference to them. */
+  function deletePlayer(playerId: string) {
+    setPlayers((items) => items.filter((player) => player.id !== playerId))
+
+    setDrives((items) =>
+      items.map((drive) => {
+        const assignments = { ...drive.assignments }
+        let changed = false
+        Object.keys(assignments).forEach((slotCode) => {
+          if (assignments[slotCode] === playerId) {
+            assignments[slotCode] = null
+            changed = true
+          }
+        })
+        return changed ? { ...drive, assignments } : drive
+      })
+    )
+
+    setLineupTemplates((items) =>
+      items.map((template) => {
+        const assignments = { ...template.assignments }
+        let changed = false
+        Object.keys(assignments).forEach((slotCode) => {
+          if (assignments[slotCode] === playerId) {
+            assignments[slotCode] = null
+            changed = true
+          }
+        })
+        return changed ? { ...template, assignments } : template
+      })
+    )
+
+    setAvailabilityByGame((current) =>
+      Object.keys(current).reduce<Record<string, Record<string, boolean>>>((next, gameId) => {
+        const { [playerId]: removed, ...rest } = current[gameId]
+        next[gameId] = rest
+        return next
+      }, {})
+    )
+
+    clearedSlotsRef.current.delete(playerId)
+    if (selectedPlayerId === playerId) setSelectedPlayerId(null)
+  }
+
   /** Puts players back on the list, and back into any lineup slot that is still open. */
   function restorePlayers(playerIds: string[]) {
     if (!selectedGame || playerIds.length === 0) return
@@ -646,6 +690,7 @@ export default function CoachApp() {
             unavailablePlayers={unavailablePlayers}
             removePlayer={(playerId) => setPlayerAvailable(playerId, false)}
             restorePlayers={restorePlayers}
+            deletePlayer={deletePlayer}
             addPlayer={addPlayer}
             gameDrives={gameDrives}
             selectedDrive={selectedDrive}
@@ -799,6 +844,7 @@ function PlanningPage({
   unavailablePlayers,
   removePlayer,
   restorePlayers,
+  deletePlayer,
   addPlayer,
   gameDrives,
   selectedDrive,
@@ -821,6 +867,7 @@ function PlanningPage({
   unavailablePlayers: Player[]
   removePlayer: (playerId: string) => void
   restorePlayers: (playerIds: string[]) => void
+  deletePlayer: (playerId: string) => void
   addPlayer: (name: string) => void
   gameDrives: Drive[]
   selectedDrive?: Drive
@@ -842,6 +889,8 @@ function PlanningPage({
   const [addingPlayer, setAddingPlayer] = useState(false)
   const [newPlayerName, setNewPlayerName] = useState('')
   const [showAddBack, setShowAddBack] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const pendingDeletePlayer = availablePlayers.find((player) => player.id === pendingDeleteId)
 
   useEffect(() => {
     if (unavailablePlayers.length === 0) setShowAddBack(false)
@@ -912,6 +961,7 @@ function PlanningPage({
               player={player}
               driveCount={usage.find((item) => item.playerId === player.id)?.totalDrives || 0}
               onRemove={() => removePlayer(player.id)}
+              onLongPress={() => setPendingDeleteId(player.id)}
             />
           ))}
         </div>
@@ -932,6 +982,17 @@ function PlanningPage({
             players={unavailablePlayers}
             restorePlayers={restorePlayers}
             onClose={() => setShowAddBack(false)}
+          />
+        )}
+
+        {pendingDeletePlayer && (
+          <DeletePlayerSheet
+            player={pendingDeletePlayer}
+            onCancel={() => setPendingDeleteId(null)}
+            onConfirm={() => {
+              deletePlayer(pendingDeletePlayer.id)
+              setPendingDeleteId(null)
+            }}
           />
         )}
       </section>
@@ -1153,27 +1214,58 @@ function GamedayPage({
 
 const swipeRemoveDistance = 128
 const swipeOpenDistance = 112
+const longPressDuration = 2000
 
 /**
  * Swipe left to drop a player from today's list. A short swipe parks the row open
  * so the Remove button can be tapped instead; a long swipe removes right away.
+ * Holding the row still for two seconds asks to delete the player for good.
  */
 function RosterRow({
   player,
   driveCount,
-  onRemove
+  onRemove,
+  onLongPress
 }: {
   player: Player
   driveCount: number
   onRemove: () => void
+  onLongPress: () => void
 }) {
   const [open, setOpen] = useState(false)
   const [dragOffset, setDragOffset] = useState<number | null>(null)
+  const [holding, setHolding] = useState(false)
   const startXRef = useRef(0)
   const pointerIdRef = useRef<number | null>(null)
+  const holdTimerRef = useRef<number | null>(null)
+  const holdFiredRef = useRef(false)
 
   const restingOffset = open ? -swipeOpenDistance : 0
   const offset = dragOffset ?? restingOffset
+
+  function cancelHold() {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+    setHolding(false)
+  }
+
+  useEffect(() => cancelHold, [])
+
+  function startHold() {
+    holdFiredRef.current = false
+    setHolding(true)
+    holdTimerRef.current = window.setTimeout(() => {
+      holdFiredRef.current = true
+      holdTimerRef.current = null
+      setHolding(false)
+      setDragOffset(null)
+      setOpen(false)
+      navigator.vibrate?.(20)
+      onLongPress()
+    }, longPressDuration)
+  }
 
   function settle(finalOffset: number) {
     pointerIdRef.current = null
@@ -1199,18 +1291,21 @@ function RosterRow({
       </button>
       <div
         style={{ transform: `translateX(${offset}px)`, touchAction: 'pan-y' }}
-        className={`relative grid grid-cols-[1fr_auto] items-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 ${
+        className={`relative select-none overflow-hidden rounded-lg border border-[#d8ded5] bg-white ${
           dragOffset === null ? 'transition-transform duration-150' : ''
         }`}
+        onContextMenu={(event) => event.preventDefault()}
         onPointerDown={(event) => {
           if (event.pointerType === 'mouse' && event.button !== 0) return
           startXRef.current = event.clientX
           pointerIdRef.current = event.pointerId
+          startHold()
         }}
         onPointerMove={(event) => {
           if (pointerIdRef.current !== event.pointerId) return
           const delta = event.clientX - startXRef.current
           if (Math.abs(delta) < 6 && dragOffset === null) return
+          cancelHold()
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
             event.currentTarget.setPointerCapture(event.pointerId)
           }
@@ -1218,6 +1313,11 @@ function RosterRow({
         }}
         onPointerUp={(event) => {
           if (pointerIdRef.current !== event.pointerId) return
+          cancelHold()
+          if (holdFiredRef.current) {
+            pointerIdRef.current = null
+            return
+          }
           if (dragOffset === null) {
             pointerIdRef.current = null
             setOpen(false)
@@ -1227,13 +1327,56 @@ function RosterRow({
         }}
         onPointerCancel={(event) => {
           if (pointerIdRef.current !== event.pointerId) return
+          cancelHold()
           settle(restingOffset)
         }}
       >
-        <p className="truncate font-black">{player.firstName}</p>
-        <p className="shrink-0 text-xs font-bold text-[#53665c]">
-          {driveCount} drive{driveCount === 1 ? '' : 's'}
+        <div
+          aria-hidden
+          style={{ width: holding ? '100%' : '0%', transition: holding ? `width ${longPressDuration}ms linear` : 'none' }}
+          className="absolute inset-y-0 left-0 bg-[#f7c948]/50"
+        />
+        <div className="relative grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-3">
+          <p className="truncate font-black">{player.firstName}</p>
+          <p className="shrink-0 text-xs font-bold text-[#53665c]">
+            {driveCount} drive{driveCount === 1 ? '' : 's'}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DeletePlayerSheet({
+  player,
+  onCancel,
+  onConfirm
+}: {
+  player: Player
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+        <h3 className="font-display text-xl font-black">Delete {player.firstName}?</h3>
+        <p className="mt-1 text-sm font-bold text-[#53665c]">
+          Removes {player.firstName} from the team for good, including every lineup. If they are just missing today,
+          swipe them off the list instead.
         </p>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-3 font-black text-white"
+          >
+            <Trash2 size={16} />
+            Delete
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -146,6 +146,13 @@ export function getFairPlayWarnings(
   return warnings
 }
 
+/** True when the slot is empty or held by someone who is out, so auto-fill can take it. */
+export function isSlotFillable(playerId: string | null, players: Player[], availability: Record<string, boolean>) {
+  if (!playerId) return true
+  const player = players.find((item) => item.id === playerId)
+  return !player || !player.active || !isPlayerAvailable(playerId, availability)
+}
+
 export function autoFillDrive(
   drive: Drive,
   players: Player[],
@@ -153,6 +160,14 @@ export function autoFillDrive(
   allGameDrives: Drive[]
 ): Drive {
   const assignments = { ...drive.assignments }
+
+  // Players who are out keep their spot until something fills it; auto-fill replaces them.
+  Object.keys(assignments).forEach((slotCode) => {
+    if (assignments[slotCode] && isSlotFillable(assignments[slotCode], players, availability)) {
+      assignments[slotCode] = null
+    }
+  })
+
   const used = new Set(Object.values(assignments).filter(Boolean) as string[])
   const usage = computeUsage(players, allGameDrives, availability)
 

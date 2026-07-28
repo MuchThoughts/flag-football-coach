@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { applySourceAssignmentsToRepeats, getLinkedRepeatCount, resetRepeatedDriveFromSource } from '../lib/drive-patterns'
 import { mergeDriveNotes } from '../lib/drive-notes'
-import { autoFillDrive, computeUsage, getDriveWarnings } from '../lib/fair-play'
+import { autoFillDrive, computeUsage, getDriveWarnings, isSlotFillable } from '../lib/fair-play'
 import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { applyLineupTemplateToDrive } from '../lib/lineup-templates'
 import { migrateAppState } from '../lib/migrate-state'
@@ -249,6 +249,24 @@ assert.equal(mixed.players.length, 12)
 assert.equal(mixed.drives[0].assignments.QB, 'p-rhett')
 assert.equal(mixed.drives[0].assignments.RB, 'player-custom')
 assert.equal(mixed.availabilityByGame[gameId]['player-custom'], false)
+
+// A player who is out keeps their spot (shown red on the field) until auto-fill replaces them.
+const driveWithOutPlayer = {
+  ...emptyOffense,
+  assignments: { ...emptyOffense.assignments, QB: 'p-luther', C: 'p-rhett' }
+}
+assert.equal(isSlotFillable('p-luther', samplePlayers, unavailable), true)
+assert.equal(isSlotFillable('p-rhett', samplePlayers, unavailable), false)
+assert.equal(isSlotFillable(null, samplePlayers, unavailable), true)
+assert.equal(isSlotFillable('p-deleted', samplePlayers, unavailable), true)
+
+const refilled = autoFillDrive(driveWithOutPlayer, samplePlayers, unavailable, [driveWithOutPlayer])
+assert.equal(assignedIds(refilled.assignments).length, 7)
+assert.equal(assignedIds(refilled.assignments).includes('p-luther'), false)
+assert.equal(refilled.assignments.C, 'p-rhett')
+
+const outWarnings = getDriveWarnings(driveWithOutPlayer, samplePlayers, unavailable)
+assert.equal(outWarnings.some((warning) => warning.message === 'Luther is not available'), true)
 
 assert.equal(initialAppState.team.name, 'Franklin Dolphins')
 assert.deepEqual(OFFENSE_SLOTS.map((slot) => slot.shortName).sort(), ['1', '2', '3', '4', 'C', 'QB', 'RB'])

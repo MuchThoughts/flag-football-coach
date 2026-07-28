@@ -5,7 +5,9 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Cloud,
+  Copy,
   LogIn,
   LogOut,
   Minimize2,
@@ -34,7 +36,6 @@ import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Player, Slot
 
 type Workflow = 'planning' | 'gameday'
 type SyncStatus = 'local' | 'signed_out' | 'loading' | 'synced' | 'saving' | 'error'
-type ClearedSlot = { driveId: string; slotCode: string }
 
 const storageKey = 'flag-football-coach:v3'
 const legacyStorageKeys = ['flag-football-coach:v2', 'flag-football-coach:v1']
@@ -96,6 +97,7 @@ export default function CoachApp() {
   const [slotPositions, setSlotPositions] = useState(initialAppState.slotPositions)
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppState.appSettings)
   const [workflow, setWorkflow] = useState<Workflow>('planning')
+  const [rosterCollapsed, setRosterCollapsed] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [draggingPlayerId, setDraggingPlayerId] = useState<string | null>(null)
@@ -110,7 +112,6 @@ export default function CoachApp() {
   const [syncReady, setSyncReady] = useState(false)
   const saveTimerRef = useRef<number | null>(null)
   const applyingRemoteStateRef = useRef(false)
-  const clearedSlotsRef = useRef(new Map<string, ClearedSlot[]>())
 
   const selectedGame = games.find((game) => game.id === selectedGameId) || games[0]
   const gameDrives = drives
@@ -324,6 +325,10 @@ export default function CoachApp() {
     }
   }, [syncMembership, syncReady, syncTeamId, syncUserId])
 
+  /**
+   * Marking a player out leaves their lineup spots alone: the field shows them in
+   * red so it is obvious which positions need a replacement.
+   */
   function setPlayerAvailable(playerId: string, available: boolean) {
     if (!selectedGame) return
     setAvailabilityByGame((current) => ({
@@ -334,25 +339,8 @@ export default function CoachApp() {
       }
     }))
 
-    if (!available) {
-      const clearedSlots: ClearedSlot[] = []
-      setDrives((items) =>
-        items.map((drive) => {
-          if (drive.gameId !== selectedGame.id || drive.status === 'completed') return drive
-          const assignments = { ...drive.assignments }
-          let changed = false
-          Object.keys(assignments).forEach((slotCode) => {
-            if (assignments[slotCode] === playerId) {
-              assignments[slotCode] = null
-              clearedSlots.push({ driveId: drive.id, slotCode })
-              changed = true
-            }
-          })
-          return changed ? { ...drive, assignments } : drive
-        })
-      )
-      clearedSlotsRef.current.set(playerId, clearedSlots)
-      if (selectedPlayerId === playerId) setSelectedPlayerId(null)
+    if (!available && selectedPlayerId === playerId) {
+      setSelectedPlayerId(null)
     }
   }
 
@@ -411,11 +399,10 @@ export default function CoachApp() {
       }, {})
     )
 
-    clearedSlotsRef.current.delete(playerId)
     if (selectedPlayerId === playerId) setSelectedPlayerId(null)
   }
 
-  /** Puts players back on the list, and back into any lineup slot that is still open. */
+  /** Puts players back on the list. Their lineup spots were never taken away. */
   function restorePlayers(playerIds: string[]) {
     if (!selectedGame || playerIds.length === 0) return
     setAvailabilityByGame((current) => ({
@@ -428,33 +415,6 @@ export default function CoachApp() {
         { ...(current[selectedGame.id] || {}) }
       )
     }))
-
-    const restoreBySlot = new Map<string, string>()
-    playerIds.forEach((playerId) => {
-      clearedSlotsRef.current.get(playerId)?.forEach((slot) => {
-        const key = `${slot.driveId}:${slot.slotCode}`
-        if (!restoreBySlot.has(key)) restoreBySlot.set(key, playerId)
-      })
-      clearedSlotsRef.current.delete(playerId)
-    })
-
-    if (restoreBySlot.size === 0) return
-
-    setDrives((items) =>
-      items.map((drive) => {
-        if (drive.status === 'completed') return drive
-        const assignments = { ...drive.assignments }
-        let changed = false
-        Object.keys(assignments).forEach((slotCode) => {
-          const playerId = restoreBySlot.get(`${drive.id}:${slotCode}`)
-          if (playerId && !assignments[slotCode]) {
-            assignments[slotCode] = playerId
-            changed = true
-          }
-        })
-        return changed ? { ...drive, assignments } : drive
-      })
-    )
   }
 
   /** Clears results and notes but keeps the lineups, so strategy carries into the next game. */
@@ -514,6 +474,24 @@ export default function CoachApp() {
           ? {
               ...drive,
               assignments: { ...drive.assignments, [slotCode]: null },
+              isCustomized: drive.isRepeated ? true : drive.isCustomized
+            }
+          : drive
+      )
+    )
+  }
+
+  /** Copies another drive's assignments onto the selected drive, slot for slot. */
+  function copyDriveAssignments(sourceDriveId: string) {
+    const source = drives.find((drive) => drive.id === sourceDriveId)
+    if (!selectedDrive || !source || source.unit !== selectedDrive.unit) return
+
+    setDrives((items) =>
+      items.map((drive) =>
+        drive.id === selectedDrive.id
+          ? {
+              ...drive,
+              assignments: { ...source.assignments },
               isCustomized: drive.isRepeated ? true : drive.isCustomized
             }
           : drive
@@ -702,6 +680,10 @@ export default function CoachApp() {
             addPlayer={addPlayer}
             slotPositions={slotPositions}
             moveSlot={moveSlot}
+            availability={availability}
+            rosterCollapsed={rosterCollapsed}
+            setRosterCollapsed={setRosterCollapsed}
+            copyDriveAssignments={copyDriveAssignments}
             gameDrives={gameDrives}
             selectedDrive={selectedDrive}
             setSelectedDriveId={setSelectedDriveId}
@@ -735,6 +717,7 @@ export default function CoachApp() {
             recordDriveResult={recordDriveResult}
             startNewGame={startNewGame}
             slotPositions={slotPositions}
+            availability={availability}
           />
         )}
       </div>
@@ -859,6 +842,10 @@ function PlanningPage({
   addPlayer,
   slotPositions,
   moveSlot,
+  availability,
+  rosterCollapsed,
+  setRosterCollapsed,
+  copyDriveAssignments,
   gameDrives,
   selectedDrive,
   setSelectedDriveId,
@@ -884,6 +871,10 @@ function PlanningPage({
   addPlayer: (name: string) => void
   slotPositions: SlotPositions
   moveSlot: (unit: Unit, slotCode: string, position: { x: number; y: number }) => void
+  availability: Record<string, boolean>
+  rosterCollapsed: boolean
+  setRosterCollapsed: (collapsed: boolean) => void
+  copyDriveAssignments: (sourceDriveId: string) => void
   gameDrives: Drive[]
   selectedDrive?: Drive
   setSelectedDriveId: (id: string) => void
@@ -906,13 +897,23 @@ function PlanningPage({
   const [showAddBack, setShowAddBack] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
   const [pickingSlotCode, setPickingSlotCode] = useState<string | null>(null)
+  const [showCopyDrive, setShowCopyDrive] = useState(false)
   const pendingDeletePlayer = availablePlayers.find((player) => player.id === pendingDeleteId)
+  const copySourceDrives = selectedDrive
+    ? gameDrives.filter(
+        (drive) =>
+          drive.id !== selectedDrive.id &&
+          drive.unit === selectedDrive.unit &&
+          Object.values(drive.assignments).some(Boolean)
+      )
+    : []
   const pickingSlot = selectedDrive
     ? SLOTS_BY_UNIT[selectedDrive.unit].find((slot) => slot.code === pickingSlotCode)
     : undefined
 
   useEffect(() => {
     setPickingSlotCode(null)
+    setShowCopyDrive(false)
   }, [selectedDrive?.id])
 
   useEffect(() => {
@@ -933,17 +934,32 @@ function PlanningPage({
     <div className="space-y-4 py-4">
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-display text-xl font-black">Roster</h2>
-            <p className="text-sm font-bold text-[#53665c]">Swipe a player off if they are not here.</p>
-          </div>
+          <button
+            type="button"
+            onClick={() => setRosterCollapsed(!rosterCollapsed)}
+            aria-expanded={!rosterCollapsed}
+            className="flex min-w-0 items-center gap-2 text-left"
+          >
+            <ChevronDown size={20} className={`shrink-0 transition-transform ${rosterCollapsed ? '-rotate-90' : ''}`} />
+            <span className="min-w-0">
+              <span className="block font-display text-xl font-black">Roster</span>
+              <span className="block text-sm font-bold text-[#53665c]">
+                {rosterCollapsed
+                  ? `${availablePlayers.length} here${unavailablePlayers.length > 0 ? ` · ${unavailablePlayers.length} out` : ''}`
+                  : 'Swipe a player off if they are not here.'}
+              </span>
+            </span>
+          </button>
           <div className="flex shrink-0 items-center gap-2">
             <div className="rounded-lg bg-[#1f7a4d] px-3 py-1 text-center text-white">
               <p className="font-display text-xl font-black leading-tight">{availablePlayers.length}</p>
             </div>
             <button
               type="button"
-              onClick={() => setAddingPlayer((current) => !current)}
+              onClick={() => {
+                setRosterCollapsed(false)
+                setAddingPlayer((current) => !current)
+              }}
               aria-label="Add player"
               aria-expanded={addingPlayer}
               className="flex h-10 w-10 items-center justify-center rounded-full bg-[#10201a] text-white"
@@ -953,7 +969,7 @@ function PlanningPage({
           </div>
         </div>
 
-        {addingPlayer && (
+        {!rosterCollapsed && addingPlayer && (
           <div className="grid grid-cols-[1fr_auto] gap-2">
             <input
               autoFocus
@@ -972,32 +988,36 @@ function PlanningPage({
           </div>
         )}
 
-        <div className="space-y-2">
-          {availablePlayers.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
-              Nobody on the list yet.
-            </p>
-          )}
-          {availablePlayers.map((player) => (
-            <RosterRow
-              key={player.id}
-              player={player}
-              driveCount={usage.find((item) => item.playerId === player.id)?.totalDrives || 0}
-              onRemove={() => removePlayer(player.id)}
-              onLongPress={() => setPendingDeleteId(player.id)}
-            />
-          ))}
-        </div>
+        {!rosterCollapsed && (
+          <>
+            <div className="space-y-2">
+              {availablePlayers.length === 0 && (
+                <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+                  Nobody on the list yet.
+                </p>
+              )}
+              {availablePlayers.map((player) => (
+                <RosterRow
+                  key={player.id}
+                  player={player}
+                  driveCount={usage.find((item) => item.playerId === player.id)?.totalDrives || 0}
+                  onRemove={() => removePlayer(player.id)}
+                  onLongPress={() => setPendingDeleteId(player.id)}
+                />
+              ))}
+            </div>
 
-        {unavailablePlayers.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setShowAddBack(true)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black"
-          >
-            <Undo2 size={16} />
-            Add Back ({unavailablePlayers.length})
-          </button>
+            {unavailablePlayers.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowAddBack(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black"
+              >
+                <Undo2 size={16} />
+                Add Back ({unavailablePlayers.length})
+              </button>
+            )}
+          </>
         )}
 
         {showAddBack && (
@@ -1026,10 +1046,21 @@ function PlanningPage({
             <h2 className="font-display text-xl font-black">Lineups</h2>
             <p className="text-sm font-bold text-[#53665c]">Carries over to the next game until you edit it.</p>
           </div>
-          <button type="button" onClick={autoFillSelectedDrive} disabled={!selectedDrive} className="flex items-center gap-2 rounded-lg bg-[#f7c948] px-3 py-2 text-sm font-black text-[#10201a] disabled:opacity-40">
-            <Save size={15} />
-            Fill
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowCopyDrive(true)}
+              disabled={copySourceDrives.length === 0}
+              className="flex items-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black disabled:opacity-40"
+            >
+              <Copy size={15} />
+              Copy
+            </button>
+            <button type="button" onClick={autoFillSelectedDrive} disabled={!selectedDrive} className="flex items-center gap-2 rounded-lg bg-[#f7c948] px-3 py-2 text-sm font-black text-[#10201a] disabled:opacity-40">
+              <Save size={15} />
+              Fill
+            </button>
+          </div>
         </div>
 
         <DriveScroller drives={gameDrives} selectedDriveId={selectedDrive?.id || ''} setSelectedDriveId={setSelectedDriveId} />
@@ -1064,10 +1095,23 @@ function PlanningPage({
               clearSlot={clearSlot}
               draggingPlayerId={draggingPlayerId}
               slotPositions={slotPositions}
+              availability={availability}
               moveSlot={moveSlot}
               onPickSlot={setPickingSlotCode}
               interactive
             />
+            {showCopyDrive && (
+              <CopyDriveSheet
+                drives={copySourceDrives}
+                players={playersById}
+                targetDrive={selectedDrive}
+                onCopy={(driveId) => {
+                  copyDriveAssignments(driveId)
+                  setShowCopyDrive(false)
+                }}
+                onClose={() => setShowCopyDrive(false)}
+              />
+            )}
             {pickingSlot && (
               <SlotPickerSheet
                 slot={pickingSlot}
@@ -1111,7 +1155,8 @@ function GamedayPage({
   updateDriveNote,
   recordDriveResult,
   startNewGame,
-  slotPositions
+  slotPositions,
+  availability
 }: {
   gameDrives: Drive[]
   selectedDrive?: Drive
@@ -1127,6 +1172,7 @@ function GamedayPage({
   recordDriveResult: (result: Exclude<DriveResult, ''>, advance?: boolean) => void
   startNewGame: () => void
   slotPositions: SlotPositions
+  availability: Record<string, boolean>
 }) {
   const [confirmingNewGame, setConfirmingNewGame] = useState(false)
 
@@ -1194,7 +1240,9 @@ function GamedayPage({
           </button>
         </div>
 
-        {selectedDrive && <FormationBoard drive={selectedDrive} players={players} slotPositions={slotPositions} compact />}
+        {selectedDrive && (
+          <FormationBoard drive={selectedDrive} players={players} slotPositions={slotPositions} availability={availability} compact />
+        )}
       </section>
 
       {selectedDrive && (
@@ -1385,6 +1433,70 @@ function RosterRow({
           <p className="shrink-0 text-xs font-bold text-[#53665c]">
             {driveCount} drive{driveCount === 1 ? '' : 's'}
           </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Copy a whole lineup from another drive of the same unit. */
+function CopyDriveSheet({
+  drives,
+  players,
+  targetDrive,
+  onCopy,
+  onClose
+}: {
+  drives: Drive[]
+  players: Player[]
+  targetDrive: Drive
+  onCopy: (driveId: string) => void
+  onClose: () => void
+}) {
+  const slots = SLOTS_BY_UNIT[targetDrive.unit]
+
+  function lineupSummary(drive: Drive) {
+    return slots
+      .map((slot) => players.find((player) => player.id === drive.assignments[slot.code])?.firstName)
+      .filter(Boolean)
+      .join(', ')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-display text-xl font-black">Copy into {driveLabel(targetDrive)}</h3>
+            <p className="text-sm font-bold text-[#53665c]">Replaces every position on this drive.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto">
+          {drives.map((drive) => (
+            <button
+              key={drive.id}
+              type="button"
+              onClick={() => onCopy(drive.id)}
+              className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 text-left"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-black">{driveLabel(drive)}</span>
+                <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">
+                  {Object.values(drive.assignments).filter(Boolean).length}/{slots.length}
+                </span>
+              </div>
+              <p className="mt-1 truncate text-xs font-bold text-[#53665c]">{lineupSummary(drive)}</p>
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -1620,6 +1732,7 @@ function FormationBoard({
   clearSlot,
   draggingPlayerId,
   slotPositions,
+  availability,
   moveSlot,
   onPickSlot,
   interactive = false,
@@ -1632,6 +1745,7 @@ function FormationBoard({
   clearSlot?: (slotCode: string) => void
   draggingPlayerId?: string | null
   slotPositions: SlotPositions
+  availability: Record<string, boolean>
   moveSlot?: (unit: Unit, slotCode: string, position: { x: number; y: number }) => void
   onPickSlot?: (slotCode: string) => void
   interactive?: boolean
@@ -1771,6 +1885,7 @@ function FormationBoard({
           <div className="absolute left-3 top-3 rounded-full bg-black/20 px-2 py-1 text-xs font-black uppercase text-white">{drive.unit}</div>
           {slots.map((slot) => {
             const player = players.find((item) => item.id === drive.assignments[slot.code])
+            const isOut = Boolean(player) && (!player!.active || !isPlayerAvailable(player!.id, availability))
             const position = getSlotPosition(slot, slotPositions)
             const isDragging = draggingSlot === slot.code
             return (
@@ -1798,18 +1913,23 @@ function FormationBoard({
                 <button
                   type="button"
                   tabIndex={interactive ? 0 : -1}
-                  aria-label={`${slot.name}: ${player ? player.firstName : 'open'}`}
+                  aria-label={`${slot.name}: ${player ? `${player.firstName}${isOut ? ' (out)' : ''}` : 'open'}`}
                   onClick={(event) => {
                     // Pointer taps are handled on pointerup; this catches keyboard activation.
                     event.preventDefault()
                     if (event.detail === 0 && interactive && onPickSlot) onPickSlot(slot.code)
                   }}
                   className={`${markerMinHeight} w-full select-none rounded-lg border-2 text-center shadow-sm ${
-                    player ? 'border-[#10201a] bg-white text-[#10201a]' : 'border-dashed border-[#f6f2df] bg-white/16 text-white'
+                    isOut
+                      ? 'border-[#8f2e20] bg-[#c2412d] text-white'
+                      : player
+                        ? 'border-[#10201a] bg-white text-[#10201a]'
+                        : 'border-dashed border-[#f6f2df] bg-white/16 text-white'
                   } ${interactive ? 'cursor-pointer' : 'cursor-default'} ${isDragging ? 'scale-110 shadow-lg ring-2 ring-[#f7c948]' : ''}`}
                 >
                   <p className="text-[11px] font-black uppercase opacity-80">{slot.shortName}</p>
                   <p className="mt-1 truncate text-sm font-black leading-tight">{player ? player.firstName : 'Open'}</p>
+                  {isOut && <p className="text-[10px] font-black uppercase tracking-wide text-white/90">Out</p>}
                 </button>
               </div>
             )

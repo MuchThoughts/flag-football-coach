@@ -8,6 +8,7 @@ import {
   Cloud,
   LogIn,
   LogOut,
+  Minimize2,
   Plus,
   RotateCcw,
   Save,
@@ -27,9 +28,9 @@ import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import { autoFillDrive, computeUsage, getDriveWarnings, isPlayerAvailable } from '@/lib/fair-play'
 import { getGameSummary } from '@/lib/game-summary'
 import { migrateAppState } from '@/lib/migrate-state'
-import { SLOTS_BY_UNIT } from '@/lib/positions'
+import { getSlotPosition, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
-import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Player, Unit } from '@/lib/types'
+import type { AppSettings, AppState, Drive, DriveNote, DriveResult, Player, SlotPositions, Unit } from '@/lib/types'
 
 type Workflow = 'planning' | 'gameday'
 type SyncStatus = 'local' | 'signed_out' | 'loading' | 'synced' | 'saving' | 'error'
@@ -92,6 +93,7 @@ export default function CoachApp() {
   const [practiceTemplates, setPracticeTemplates] = useState(initialAppState.practiceTemplates)
   const [plays, setPlays] = useState(initialAppState.plays)
   const [lineupTemplates, setLineupTemplates] = useState(initialAppState.lineupTemplates)
+  const [slotPositions, setSlotPositions] = useState(initialAppState.slotPositions)
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppState.appSettings)
   const [workflow, setWorkflow] = useState<Workflow>('planning')
   const [loaded, setLoaded] = useState(false)
@@ -172,6 +174,7 @@ export default function CoachApp() {
       practiceTemplates,
       plays,
       lineupTemplates,
+      slotPositions,
       appSettings
     }
   }
@@ -189,6 +192,7 @@ export default function CoachApp() {
     setPracticeTemplates(saved.practiceTemplates)
     setPlays(saved.plays)
     setLineupTemplates(saved.lineupTemplates)
+    setSlotPositions(saved.slotPositions)
     setAppSettings(membership ? appSettingsFromMembership(membership, saved.appSettings) : saved.appSettings)
   }
 
@@ -299,7 +303,7 @@ export default function CoachApp() {
           setSyncMessage(error instanceof Error ? error.message : 'Cloud save failed')
         })
     }, 700)
-  }, [appSettings, availabilityByGame, drives, games, lineupTemplates, loaded, players, plays, practiceTemplates, practices, selectedDriveId, selectedGameId, team])
+  }, [appSettings, availabilityByGame, drives, games, lineupTemplates, loaded, players, plays, practiceTemplates, practices, selectedDriveId, selectedGameId, slotPositions, team])
 
   useEffect(() => {
     if (!syncReady || !syncTeamId || !syncUserId) return
@@ -517,6 +521,10 @@ export default function CoachApp() {
     )
   }
 
+  function moveSlot(unit: Unit, slotCode: string, position: { x: number; y: number }) {
+    setSlotPositions((current) => ({ ...current, [slotPositionKey(unit, slotCode)]: position }))
+  }
+
   function autoFillSelectedDrive() {
     if (!selectedDrive) return
     setDrives((items) =>
@@ -692,6 +700,8 @@ export default function CoachApp() {
             restorePlayers={restorePlayers}
             deletePlayer={deletePlayer}
             addPlayer={addPlayer}
+            slotPositions={slotPositions}
+            moveSlot={moveSlot}
             gameDrives={gameDrives}
             selectedDrive={selectedDrive}
             setSelectedDriveId={setSelectedDriveId}
@@ -724,6 +734,7 @@ export default function CoachApp() {
             updateDriveNote={updateDriveNote}
             recordDriveResult={recordDriveResult}
             startNewGame={startNewGame}
+            slotPositions={slotPositions}
           />
         )}
       </div>
@@ -846,6 +857,8 @@ function PlanningPage({
   restorePlayers,
   deletePlayer,
   addPlayer,
+  slotPositions,
+  moveSlot,
   gameDrives,
   selectedDrive,
   setSelectedDriveId,
@@ -869,6 +882,8 @@ function PlanningPage({
   restorePlayers: (playerIds: string[]) => void
   deletePlayer: (playerId: string) => void
   addPlayer: (name: string) => void
+  slotPositions: SlotPositions
+  moveSlot: (unit: Unit, slotCode: string, position: { x: number; y: number }) => void
   gameDrives: Drive[]
   selectedDrive?: Drive
   setSelectedDriveId: (id: string) => void
@@ -890,7 +905,15 @@ function PlanningPage({
   const [newPlayerName, setNewPlayerName] = useState('')
   const [showAddBack, setShowAddBack] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [pickingSlotCode, setPickingSlotCode] = useState<string | null>(null)
   const pendingDeletePlayer = availablePlayers.find((player) => player.id === pendingDeleteId)
+  const pickingSlot = selectedDrive
+    ? SLOTS_BY_UNIT[selectedDrive.unit].find((slot) => slot.code === pickingSlotCode)
+    : undefined
+
+  useEffect(() => {
+    setPickingSlotCode(null)
+  }, [selectedDrive?.id])
 
   useEffect(() => {
     if (unavailablePlayers.length === 0) setShowAddBack(false)
@@ -1040,8 +1063,27 @@ function PlanningPage({
               assignPlayerToSlot={assignPlayerToSlot}
               clearSlot={clearSlot}
               draggingPlayerId={draggingPlayerId}
+              slotPositions={slotPositions}
+              moveSlot={moveSlot}
+              onPickSlot={setPickingSlotCode}
               interactive
             />
+            {pickingSlot && (
+              <SlotPickerSheet
+                slot={pickingSlot}
+                drive={selectedDrive}
+                players={availablePlayers}
+                onAssign={(playerId) => {
+                  assignPlayerToSlot(pickingSlot.code, playerId)
+                  setPickingSlotCode(null)
+                }}
+                onClear={() => {
+                  clearSlot(pickingSlot.code)
+                  setPickingSlotCode(null)
+                }}
+                onClose={() => setPickingSlotCode(null)}
+              />
+            )}
             <BenchPicker
               benchPlayers={benchPlayers}
               selectedPlayerId={selectedPlayerId}
@@ -1068,7 +1110,8 @@ function GamedayPage({
   gameNoteDraft,
   updateDriveNote,
   recordDriveResult,
-  startNewGame
+  startNewGame,
+  slotPositions
 }: {
   gameDrives: Drive[]
   selectedDrive?: Drive
@@ -1083,6 +1126,7 @@ function GamedayPage({
   updateDriveNote: (value: string) => void
   recordDriveResult: (result: Exclude<DriveResult, ''>, advance?: boolean) => void
   startNewGame: () => void
+  slotPositions: SlotPositions
 }) {
   const [confirmingNewGame, setConfirmingNewGame] = useState(false)
 
@@ -1150,7 +1194,7 @@ function GamedayPage({
           </button>
         </div>
 
-        {selectedDrive && <FormationBoard drive={selectedDrive} players={players} compact />}
+        {selectedDrive && <FormationBoard drive={selectedDrive} players={players} slotPositions={slotPositions} compact />}
       </section>
 
       {selectedDrive && (
@@ -1347,6 +1391,92 @@ function RosterRow({
   )
 }
 
+/** Tapping a position on the field: pick anyone, including someone already on the field. */
+function SlotPickerSheet({
+  slot,
+  drive,
+  players,
+  onAssign,
+  onClear,
+  onClose
+}: {
+  slot: FieldSlot
+  drive: Drive
+  players: Player[]
+  onAssign: (playerId: string) => void
+  onClear: () => void
+  onClose: () => void
+}) {
+  const currentPlayerId = drive.assignments[slot.code]
+  const slots = SLOTS_BY_UNIT[drive.unit]
+
+  function currentSlotFor(playerId: string) {
+    return slots.find((item) => item.code !== slot.code && drive.assignments[item.code] === playerId)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-display text-xl font-black">{slot.name}</h3>
+            <p className="text-sm font-bold text-[#53665c]">
+              {drive.unit === 'offense' ? 'Offense' : 'Defense'} · {driveLabel(drive)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto">
+          {players.length === 0 && (
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+              Nobody on the list.
+            </p>
+          )}
+          {players.map((player) => {
+            const playingElsewhere = currentSlotFor(player.id)
+            const isCurrent = currentPlayerId === player.id
+            return (
+              <button
+                key={player.id}
+                type="button"
+                onClick={() => onAssign(player.id)}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-3 text-left ${
+                  isCurrent ? 'border-[#10201a] bg-[#f7c948]/30' : 'border-[#d8ded5] bg-white'
+                }`}
+              >
+                <span className="truncate font-black">{player.firstName}</span>
+                {isCurrent ? (
+                  <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">Here now</span>
+                ) : playingElsewhere ? (
+                  <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black text-[#53665c]">
+                    Now at {playingElsewhere.shortName}
+                  </span>
+                ) : (
+                  <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">Bench</span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {currentPlayerId && (
+          <button type="button" onClick={onClear} className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+            Leave {slot.shortName} open
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function DeletePlayerSheet({
   player,
   onCancel,
@@ -1466,6 +1596,22 @@ function DriveScroller({
   )
 }
 
+const markerDragThreshold = 8
+const minZoom = 1
+const maxZoom = 2.5
+
+function clampPercent(value: number, edge: number) {
+  return Math.min(100 - edge, Math.max(edge, value))
+}
+
+function pointerDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+/**
+ * The field. Tap a position to pick who plays it, drag a position to move the
+ * marker on the field, and pinch with two fingers to zoom in on the formation.
+ */
 function FormationBoard({
   drive,
   players,
@@ -1473,6 +1619,9 @@ function FormationBoard({
   assignPlayerToSlot,
   clearSlot,
   draggingPlayerId,
+  slotPositions,
+  moveSlot,
+  onPickSlot,
   interactive = false,
   compact = false
 }: {
@@ -1482,6 +1631,9 @@ function FormationBoard({
   assignPlayerToSlot?: (slotCode: string, playerId?: string) => void
   clearSlot?: (slotCode: string) => void
   draggingPlayerId?: string | null
+  slotPositions: SlotPositions
+  moveSlot?: (unit: Unit, slotCode: string, position: { x: number; y: number }) => void
+  onPickSlot?: (slotCode: string) => void
   interactive?: boolean
   compact?: boolean
 }) {
@@ -1490,47 +1642,191 @@ function FormationBoard({
   const markerWidth = compact ? 'w-[72px] sm:w-28' : 'w-[76px] sm:w-28'
   const markerMinHeight = compact ? 'min-h-[58px] p-1' : 'min-h-[66px] p-1.5'
 
+  const fieldRef = useRef<HTMLDivElement | null>(null)
+  const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
+  const [draggingSlot, setDraggingSlot] = useState<string | null>(null)
+  const dragRef = useRef<{ slotCode: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
+  const pinchRef = useRef(new Map<number, { x: number; y: number }>())
+  const lastPinchRef = useRef<{ distance: number; centerX: number; centerY: number } | null>(null)
+
+  function endPinch() {
+    lastPinchRef.current = null
+  }
+
+  /** Two fingers on the field: scale around the pinch center and pan with it. */
+  function handleFieldPointerDown(event: React.PointerEvent) {
+    pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pinchRef.current.size === 2) {
+      dragRef.current = null
+      setDraggingSlot(null)
+      const [a, b] = Array.from(pinchRef.current.values())
+      lastPinchRef.current = {
+        distance: pointerDistance(a, b),
+        centerX: (a.x + b.x) / 2,
+        centerY: (a.y + b.y) / 2
+      }
+    }
+  }
+
+  function handleFieldPointerMove(event: React.PointerEvent) {
+    if (!pinchRef.current.has(event.pointerId)) return
+    pinchRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
+    if (pinchRef.current.size !== 2 || !lastPinchRef.current) return
+
+    event.preventDefault()
+    const [a, b] = Array.from(pinchRef.current.values())
+    const distance = pointerDistance(a, b)
+    const centerX = (a.x + b.x) / 2
+    const centerY = (a.y + b.y) / 2
+    const previous = lastPinchRef.current
+
+    setView((current) => {
+      const scale = Math.min(maxZoom, Math.max(minZoom, current.scale * (distance / (previous.distance || distance))))
+      if (scale === minZoom) return { scale, x: 0, y: 0 }
+      return {
+        scale,
+        x: current.x + (centerX - previous.centerX),
+        y: current.y + (centerY - previous.centerY)
+      }
+    })
+
+    lastPinchRef.current = { distance, centerX, centerY }
+  }
+
+  function handleFieldPointerUp(event: React.PointerEvent) {
+    pinchRef.current.delete(event.pointerId)
+    if (pinchRef.current.size < 2) endPinch()
+  }
+
+  function startMarkerDrag(event: React.PointerEvent, slotCode: string, position: { x: number; y: number }) {
+    if (!interactive || !moveSlot) return
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    dragRef.current = {
+      slotCode,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: position.x,
+      originY: position.y,
+      moved: false
+    }
+  }
+
+  function moveMarker(event: React.PointerEvent) {
+    const drag = dragRef.current
+    const field = fieldRef.current
+    if (!drag || !field || !moveSlot || pinchRef.current.size > 1) return
+
+    const deltaX = event.clientX - drag.startX
+    const deltaY = event.clientY - drag.startY
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < markerDragThreshold) return
+
+    if (!drag.moved) {
+      drag.moved = true
+      setDraggingSlot(drag.slotCode)
+      if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.setPointerCapture(event.pointerId)
+      }
+    }
+
+    const rect = field.getBoundingClientRect()
+    moveSlot(drive.unit, drag.slotCode, {
+      x: clampPercent(drag.originX + (deltaX / rect.width) * 100, 6),
+      y: clampPercent(drag.originY + (deltaY / rect.height) * 100, 8)
+    })
+  }
+
+  function endMarkerDrag(slotCode: string) {
+    const drag = dragRef.current
+    dragRef.current = null
+    setDraggingSlot(null)
+
+    // A press that never moved is a tap: pick who plays this position.
+    if (!drag || drag.moved) return
+    if (selectedPlayer && assignPlayerToSlot) {
+      assignPlayerToSlot(slotCode)
+    } else if (onPickSlot) {
+      onPickSlot(slotCode)
+    }
+  }
+
   return (
-    <div className={`field-yardlines relative mt-3 ${boardHeight} overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field`}>
-      <div className="absolute inset-x-0 top-1/2 h-px bg-[#f6f2df]/70" />
-      <div className="absolute left-3 top-3 rounded-full bg-black/20 px-2 py-1 text-xs font-black uppercase text-white">{drive.unit}</div>
-      {slots.map((slot) => {
-        const player = players.find((item) => item.id === drive.assignments[slot.code])
-        return (
-          <div
-            key={slot.code}
-            className={`absolute ${markerWidth} -translate-x-1/2 -translate-y-1/2`}
-            style={{ left: `clamp(40px, ${slot.x}%, calc(100% - 40px))`, top: `${slot.y}%` }}
-            onDragOver={(event) => {
-              if (interactive) event.preventDefault()
-            }}
-            onDrop={(event) => {
-              if (!interactive || !assignPlayerToSlot) return
-              event.preventDefault()
-              const droppedPlayerId = event.dataTransfer.getData('text/plain') || draggingPlayerId || undefined
-              assignPlayerToSlot(slot.code, droppedPlayerId)
-            }}
+    <div className="relative">
+      <div
+        ref={fieldRef}
+        className={`field-yardlines relative mt-3 ${boardHeight} touch-pan-y overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field`}
+        onPointerDown={handleFieldPointerDown}
+        onPointerMove={handleFieldPointerMove}
+        onPointerUp={handleFieldPointerUp}
+        onPointerCancel={handleFieldPointerUp}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})`,
+            transformOrigin: 'center',
+            transition: draggingSlot || lastPinchRef.current ? 'none' : 'transform 150ms ease-out'
+          }}
+        >
+          <div className="absolute inset-x-0 top-1/2 h-px bg-[#f6f2df]/70" />
+          <div className="absolute left-3 top-3 rounded-full bg-black/20 px-2 py-1 text-xs font-black uppercase text-white">{drive.unit}</div>
+          {slots.map((slot) => {
+            const player = players.find((item) => item.id === drive.assignments[slot.code])
+            const position = getSlotPosition(slot, slotPositions)
+            const isDragging = draggingSlot === slot.code
+            return (
+              <div
+                key={slot.code}
+                className={`absolute ${markerWidth} -translate-x-1/2 -translate-y-1/2 ${isDragging ? 'z-20' : 'z-10'}`}
+                style={{ left: `${position.x}%`, top: `${position.y}%`, touchAction: interactive ? 'none' : undefined }}
+                onDragOver={(event) => {
+                  if (interactive) event.preventDefault()
+                }}
+                onDrop={(event) => {
+                  if (!interactive || !assignPlayerToSlot) return
+                  event.preventDefault()
+                  const droppedPlayerId = event.dataTransfer.getData('text/plain') || draggingPlayerId || undefined
+                  assignPlayerToSlot(slot.code, droppedPlayerId)
+                }}
+                onPointerDown={(event) => startMarkerDrag(event, slot.code, position)}
+                onPointerMove={moveMarker}
+                onPointerUp={() => endMarkerDrag(slot.code)}
+                onPointerCancel={() => {
+                  dragRef.current = null
+                  setDraggingSlot(null)
+                }}
+              >
+                <button
+                  type="button"
+                  tabIndex={interactive ? 0 : -1}
+                  aria-label={`${slot.name}: ${player ? player.firstName : 'open'}`}
+                  onClick={(event) => {
+                    // Pointer taps are handled on pointerup; this catches keyboard activation.
+                    event.preventDefault()
+                    if (event.detail === 0 && interactive && onPickSlot) onPickSlot(slot.code)
+                  }}
+                  className={`${markerMinHeight} w-full select-none rounded-lg border-2 text-center shadow-sm ${
+                    player ? 'border-[#10201a] bg-white text-[#10201a]' : 'border-dashed border-[#f6f2df] bg-white/16 text-white'
+                  } ${interactive ? 'cursor-pointer' : 'cursor-default'} ${isDragging ? 'scale-110 shadow-lg ring-2 ring-[#f7c948]' : ''}`}
+                >
+                  <p className="text-[11px] font-black uppercase opacity-80">{slot.shortName}</p>
+                  <p className="mt-1 truncate text-sm font-black leading-tight">{player ? player.firstName : 'Open'}</p>
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {view.scale > 1 && (
+          <button
+            type="button"
+            onClick={() => setView({ scale: 1, x: 0, y: 0 })}
+            className="absolute right-3 top-3 z-30 flex items-center gap-1 rounded-full bg-black/40 px-3 py-1 text-xs font-black uppercase text-white"
           >
-            <button
-              type="button"
-              onClick={() => {
-                if (!interactive) return
-                if (selectedPlayer && assignPlayerToSlot) {
-                  assignPlayerToSlot(slot.code)
-                } else if (player && clearSlot) {
-                  clearSlot(slot.code)
-                }
-              }}
-              className={`${markerMinHeight} w-full rounded-lg border-2 text-center shadow-sm ${
-                player ? 'border-[#10201a] bg-white text-[#10201a]' : 'border-dashed border-[#f6f2df] bg-white/16 text-white'
-              } ${interactive ? 'cursor-pointer' : 'cursor-default'}`}
-            >
-              <p className="text-[11px] font-black uppercase opacity-80">{slot.shortName}</p>
-              <p className="mt-1 truncate text-sm font-black leading-tight">{player ? player.firstName : 'Open'}</p>
-            </button>
-          </div>
-        )
-      })}
+            <Minimize2 size={13} />
+            {Math.round(view.scale * 10) / 10}x
+          </button>
+        )}
+      </div>
     </div>
   )
 }

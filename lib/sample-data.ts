@@ -72,7 +72,7 @@ export const samplePlayers: Player[] = rosterNames.map((firstName) =>
 export const initialAppState: AppState = {
   team: {
     id: teamId,
-    name: 'Wildcats',
+    name: 'Franklin Dolphins',
     season: 'Fall 2026',
     ageGroup: '3rd Grade'
   },
@@ -166,6 +166,7 @@ export const initialAppState: AppState = {
     }
   ],
   lineupTemplates: [],
+  slotPositions: {},
   appSettings: {
     role: 'head',
     assistantCanAddNotes: true,

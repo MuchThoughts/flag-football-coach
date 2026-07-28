@@ -111,6 +111,11 @@ export function migrateAppState(saved: AppState): AppState {
   const state = replaceDemoRoster({
     ...initialAppState,
     ...saved,
+    team: {
+      ...(saved.team || initialAppState.team),
+      // The old placeholder team name predates the real one.
+      name: !saved.team?.name || saved.team.name === 'Wildcats' ? initialAppState.team.name : saved.team.name
+    },
     players: (saved.players || []).map(normalizePlayer),
     games: (saved.games || initialAppState.games).map(normalizeGame),
     availabilityByGame: saved.availabilityByGame || {},
@@ -118,6 +123,7 @@ export function migrateAppState(saved: AppState): AppState {
     practiceTemplates: saved.practiceTemplates || initialAppState.practiceTemplates,
     plays: saved.plays || [],
     lineupTemplates: saved.lineupTemplates || [],
+    slotPositions: saved.slotPositions || {},
     appSettings: saved.appSettings || initialAppState.appSettings
   })
 

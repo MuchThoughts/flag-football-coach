@@ -15,6 +15,9 @@ export type DriveResult =
 
 export type PlayerRatings = Record<string, number>
 
+/** Coach-dragged marker positions, keyed `${unit}:${slotCode}`, as percentages of the field. */
+export type SlotPositions = Record<string, { x: number; y: number }>
+
 export interface Team {
   id: string
   name: string
@@ -132,5 +135,6 @@ export interface AppState {
   practiceTemplates: PracticeTemplate[]
   plays: PlaybookPlay[]
   lineupTemplates: LineupTemplate[]
+  slotPositions: SlotPositions
   appSettings: AppSettings
 }

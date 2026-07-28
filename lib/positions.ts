@@ -1,4 +1,4 @@
-import type { Unit } from './types'
+import type { SlotPositions, Unit } from './types'
 
 export interface FieldSlot {
   code: string
@@ -11,13 +11,13 @@ export interface FieldSlot {
 }
 
 export const OFFENSE_SLOTS: FieldSlot[] = [
-  { code: '1', name: 'Left WR', shortName: 'LWR', unit: 'offense', ratingKey: 'WR', x: 11, y: 78 },
-  { code: '2', name: 'Left Slot', shortName: 'LS', unit: 'offense', ratingKey: 'WR', x: 28, y: 63 },
+  { code: '1', name: '1', shortName: '1', unit: 'offense', ratingKey: 'WR', x: 11, y: 78 },
+  { code: '2', name: '2', shortName: '2', unit: 'offense', ratingKey: 'WR', x: 28, y: 63 },
   { code: 'C', name: 'Center', shortName: 'C', unit: 'offense', ratingKey: 'C', x: 50, y: 82 },
   { code: 'QB', name: 'Quarterback', shortName: 'QB', unit: 'offense', ratingKey: 'QB', x: 50, y: 58 },
   { code: 'RB', name: 'Running Back', shortName: 'RB', unit: 'offense', ratingKey: 'RB', x: 50, y: 34 },
-  { code: '3', name: 'Right Slot', shortName: 'RS', unit: 'offense', ratingKey: 'WR', x: 72, y: 63 },
-  { code: '4', name: 'Right WR', shortName: 'RWR', unit: 'offense', ratingKey: 'WR', x: 89, y: 78 }
+  { code: '3', name: '3', shortName: '3', unit: 'offense', ratingKey: 'WR', x: 72, y: 63 },
+  { code: '4', name: '4', shortName: '4', unit: 'offense', ratingKey: 'WR', x: 89, y: 78 }
 ]
 
 export const DEFENSE_SLOTS: FieldSlot[] = [
@@ -33,6 +33,15 @@ export const DEFENSE_SLOTS: FieldSlot[] = [
 export const SLOTS_BY_UNIT: Record<Unit, FieldSlot[]> = {
   offense: OFFENSE_SLOTS,
   defense: DEFENSE_SLOTS
+}
+
+export function slotPositionKey(unit: Unit, slotCode: string) {
+  return `${unit}:${slotCode}`
+}
+
+/** Where a marker sits on the field: the coach's dragged position, else the default. */
+export function getSlotPosition(slot: FieldSlot, slotPositions: SlotPositions) {
+  return slotPositions[slotPositionKey(slot.unit, slot.code)] || { x: slot.x, y: slot.y }
 }
 
 export function createEmptyAssignments(unit: Unit) {

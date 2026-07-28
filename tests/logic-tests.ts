@@ -5,7 +5,7 @@ import { autoFillDrive, computeUsage, getDriveWarnings } from '../lib/fair-play'
 import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { applyLineupTemplateToDrive } from '../lib/lineup-templates'
 import { migrateAppState } from '../lib/migrate-state'
-import { OFFENSE_SLOTS, DEFENSE_SLOTS } from '../lib/positions'
+import { OFFENSE_SLOTS, DEFENSE_SLOTS, getSlotPosition, slotPositionKey } from '../lib/positions'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
@@ -249,5 +249,28 @@ assert.equal(mixed.players.length, 12)
 assert.equal(mixed.drives[0].assignments.QB, 'p-rhett')
 assert.equal(mixed.drives[0].assignments.RB, 'player-custom')
 assert.equal(mixed.availabilityByGame[gameId]['player-custom'], false)
+
+assert.equal(initialAppState.team.name, 'Franklin Dolphins')
+assert.deepEqual(OFFENSE_SLOTS.map((slot) => slot.shortName).sort(), ['1', '2', '3', '4', 'C', 'QB', 'RB'])
+
+const renamedTeam = migrateAppState({
+  ...initialAppState,
+  team: { ...initialAppState.team, name: 'Wildcats' }
+} as unknown as typeof initialAppState)
+assert.equal(renamedTeam.team.name, 'Franklin Dolphins')
+
+const customTeamName = migrateAppState({
+  ...initialAppState,
+  team: { ...initialAppState.team, name: 'Franklin Dolphins Blue' }
+} as unknown as typeof initialAppState)
+assert.equal(customTeamName.team.name, 'Franklin Dolphins Blue')
+
+const qbSlot = OFFENSE_SLOTS.find((slot) => slot.code === 'QB')!
+assert.deepEqual(getSlotPosition(qbSlot, {}), { x: qbSlot.x, y: qbSlot.y })
+assert.deepEqual(getSlotPosition(qbSlot, { [slotPositionKey('offense', 'QB')]: { x: 20, y: 40 } }), { x: 20, y: 40 })
+assert.deepEqual(getSlotPosition(qbSlot, { [slotPositionKey('defense', 'QB')]: { x: 20, y: 40 } }), { x: qbSlot.x, y: qbSlot.y })
+
+const statelessPositions = migrateAppState({ ...initialAppState, slotPositions: undefined } as unknown as typeof initialAppState)
+assert.deepEqual(statelessPositions.slotPositions, {})
 
 console.log('logic tests passed')

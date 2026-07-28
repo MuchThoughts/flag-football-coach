@@ -406,6 +406,27 @@ assert.equal(
   true
 )
 
+// Legacy plays have nothing drawn on them yet.
+assert.deepEqual(legacyPlaybook.plays[0].routes, [])
+assert.deepEqual(legacyPlaybook.plays[0].footballs, [])
+
+// A play saved before drawing existed keeps its fields and gains empty ones.
+const predrawing = migrateAppState({
+  ...initialAppState,
+  plays: [{ ...initialAppState.plays[0], routes: undefined, footballs: undefined }]
+} as unknown as typeof initialAppState)
+assert.deepEqual(predrawing.plays[0].routes, [])
+assert.deepEqual(predrawing.plays[0].footballs, [])
+assert.equal(predrawing.plays[0].name, 'Sweep Right')
+
+// Seeded plays ship with a drawing, including a dashed pass and a handoff.
+assert.equal(initialAppState.plays[0].footballs.length, 1)
+assert.equal(initialAppState.plays[1].routes.some((route) => route.style === 'dashed'), true)
+assert.equal(
+  initialAppState.plays.every((play) => play.routes.every((route) => route.points.length >= 2)),
+  true
+)
+
 // Already-migrated playbooks are left alone.
 const stablePlaybook = migrateAppState(initialAppState)
 assert.deepEqual(stablePlaybook.plays.map((play) => play.id), initialAppState.plays.map((play) => play.id))

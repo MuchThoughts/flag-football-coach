@@ -159,6 +159,11 @@ export const initialAppState: AppState = {
       type: 'run',
       area: 'sidelines',
       notes: 'RB motion right, 3 clears, 4 stalks space. Good early-down call when the edge defender crashes.',
+      routes: [
+        { id: 'route-sweep-rb', points: [{ x: 50, y: 34 }, { x: 66, y: 40 }, { x: 82, y: 52 }], style: 'solid' },
+        { id: 'route-sweep-3', points: [{ x: 72, y: 63 }, { x: 74, y: 30 }], style: 'solid' }
+      ],
+      footballs: [{ id: 'ball-sweep', x: 56, y: 40 }],
       createdAt: seedTimestamp,
       updatedAt: seedTimestamp
     },
@@ -170,6 +175,11 @@ export const initialAppState: AppState = {
       type: 'pass',
       area: 'middle',
       notes: '2 shallow, 3 dig, 4 clear, RB check release. Use when the QB has time and the middle is open.',
+      routes: [
+        { id: 'route-cross-2', points: [{ x: 62, y: 63 }, { x: 46, y: 46 }, { x: 30, y: 44 }], style: 'solid' },
+        { id: 'route-cross-qb', points: [{ x: 50, y: 58 }, { x: 34, y: 45 }], style: 'dashed' }
+      ],
+      footballs: [],
       createdAt: seedTimestamp,
       updatedAt: seedTimestamp
     }

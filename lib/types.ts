@@ -110,6 +110,23 @@ export interface PracticeTemplate {
   updatedAt: string
 }
 
+export interface FieldPoint {
+  x: number
+  y: number
+}
+
+/** A drawn route. Dashed means the ball travels through the air. */
+export interface PlayRoute {
+  id: string
+  points: FieldPoint[]
+  style: 'solid' | 'dashed'
+}
+
+/** A football dropped on the field to mark a handoff. */
+export interface PlayFootball extends FieldPoint {
+  id: string
+}
+
 export type PlayType = 'pass' | 'run'
 
 /** Where the play is aimed. */
@@ -133,6 +150,8 @@ export interface PlaybookPlay {
   type: PlayType
   area: PlayArea
   notes: string
+  routes: PlayRoute[]
+  footballs: PlayFootball[]
   createdAt: string
   updatedAt: string
 }

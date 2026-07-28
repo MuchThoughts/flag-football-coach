@@ -144,7 +144,7 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
   const plays = (state.plays || []).map((play) => {
     const legacy = play as unknown as LegacyPlay
     if (play.formationId && play.type && play.area) {
-      return { ...play, notes: play.notes || '' }
+      return { ...play, notes: play.notes || '', routes: play.routes || [], footballs: play.footballs || [] }
     }
 
     const formationName = legacy.formation?.trim() || 'Balanced'
@@ -173,6 +173,8 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
       type: tags.includes('run') ? ('run' as PlayType) : ('pass' as PlayType),
       area: legacyPlayArea(tags),
       notes,
+      routes: [],
+      footballs: [],
       createdAt: legacyTimestamp,
       updatedAt: legacyTimestamp
     }

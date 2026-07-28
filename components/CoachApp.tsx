@@ -40,6 +40,7 @@ import {
   PLAYBOOK_SLOTS,
   type PlayFilters
 } from '@/lib/playbook'
+import PlaybookField from '@/components/PlaybookField'
 import { getSlotPosition, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
 import type {
@@ -53,7 +54,9 @@ import type {
   Game,
   PlayArea,
   PlaybookPlay,
+  PlayFootball,
   Player,
+  PlayRoute,
   PlayType,
   SlotPositions,
   Unit
@@ -1325,98 +1328,6 @@ function PlanningPage({
   )
 }
 
-/**
- * The formation diagram: one small circle per offensive position, labelled with
- * the position only. When editable, circles drag around the field.
- */
-function FormationField({
-  positions,
-  onMove,
-  compact = false
-}: {
-  positions: SlotPositions
-  onMove?: (slotCode: string, position: { x: number; y: number }) => void
-  compact?: boolean
-}) {
-  const fieldRef = useRef<HTMLDivElement | null>(null)
-  const [draggingSlot, setDraggingSlot] = useState<string | null>(null)
-  const dragRef = useRef<{ slotCode: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
-
-  const height = compact ? 'h-[190px]' : 'h-[330px] sm:h-[380px]'
-  const circleSize = compact ? 'h-8 w-8 text-[11px]' : 'h-11 w-11 text-sm'
-
-  return (
-    <div
-      ref={fieldRef}
-      className={`field-yardlines relative ${height} overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field`}
-    >
-      <div className="absolute inset-x-0 top-1/2 h-px bg-[#f6f2df]/70" />
-      {PLAYBOOK_SLOTS.map((slot) => {
-        const position = positions[slot.code] || { x: slot.x, y: slot.y }
-        const isDragging = draggingSlot === slot.code
-        return (
-          <div
-            key={slot.code}
-            className="absolute -translate-x-1/2 -translate-y-1/2"
-            style={{ left: `${position.x}%`, top: `${position.y}%`, touchAction: onMove ? 'none' : undefined }}
-            onPointerDown={(event) => {
-              if (!onMove) return
-              if (event.pointerType === 'mouse' && event.button !== 0) return
-              dragRef.current = {
-                slotCode: slot.code,
-                startX: event.clientX,
-                startY: event.clientY,
-                originX: position.x,
-                originY: position.y,
-                moved: false
-              }
-            }}
-            onPointerMove={(event) => {
-              const drag = dragRef.current
-              const field = fieldRef.current
-              if (!drag || !field || !onMove) return
-
-              const deltaX = event.clientX - drag.startX
-              const deltaY = event.clientY - drag.startY
-              if (!drag.moved && Math.hypot(deltaX, deltaY) < markerDragThreshold) return
-
-              if (!drag.moved) {
-                drag.moved = true
-                setDraggingSlot(drag.slotCode)
-                if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.setPointerCapture(event.pointerId)
-                }
-              }
-
-              const rect = field.getBoundingClientRect()
-              onMove(drag.slotCode, {
-                x: clampPercent(drag.originX + (deltaX / rect.width) * 100, 6),
-                y: clampPercent(drag.originY + (deltaY / rect.height) * 100, 8)
-              })
-            }}
-            onPointerUp={() => {
-              dragRef.current = null
-              setDraggingSlot(null)
-            }}
-            onPointerCancel={() => {
-              dragRef.current = null
-              setDraggingSlot(null)
-            }}
-          >
-            <div
-              className={`flex ${circleSize} select-none items-center justify-center rounded-full border-2 border-[#10201a] bg-white font-black text-[#10201a] shadow-sm ${
-                isDragging ? 'scale-110 ring-2 ring-[#f7c948]' : ''
-              }`}
-            >
-              {slot.shortName}
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 function FilterChips<T extends string>({
   options,
   value,
@@ -1605,7 +1516,7 @@ function PlaybookPage({
                 </button>
               </div>
               <div className="mt-2">
-                <FormationField positions={formation.positions} compact />
+                <PlaybookField positions={formation.positions} compact />
               </div>
             </div>
           ))}
@@ -1700,7 +1611,12 @@ function PlayDetailSheet({
         </div>
 
         <div className="mt-3">
-          <FormationField positions={formation?.positions || {}} />
+          <PlaybookField
+            positions={formation?.positions || {}}
+            routes={play.routes}
+            footballs={play.footballs}
+            fullscreenOnLandscape
+          />
         </div>
 
         {play.notes && <p className="mt-3 whitespace-pre-wrap text-sm font-bold text-[#53665c]">{play.notes}</p>}
@@ -1731,12 +1647,23 @@ function PlayEditorSheet({
   const [type, setType] = useState<PlayType>(play?.type || 'pass')
   const [area, setArea] = useState<PlayArea>(play?.area || 'middle')
   const [notes, setNotes] = useState(play?.notes || '')
+  const [routes, setRoutes] = useState<PlayRoute[]>(play?.routes || [])
+  const [footballs, setFootballs] = useState<PlayFootball[]>(play?.footballs || [])
 
   const formation = formations.find((item) => item.id === formationId)
 
   function submit() {
     if (!name.trim() || !formationId) return
-    onSave({ id: play?.id || uid('play'), name: name.trim(), formationId, type, area, notes: notes.trim() })
+    onSave({
+      id: play?.id || uid('play'),
+      name: name.trim(),
+      formationId,
+      type,
+      area,
+      notes: notes.trim(),
+      routes,
+      footballs
+    })
   }
 
   return (
@@ -1777,8 +1704,48 @@ function PlayEditorSheet({
           ))}
         </select>
 
-        <div className="mt-2">
-          <FormationField positions={formation?.positions || {}} compact />
+        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Draw the play</p>
+        <p className="text-xs font-bold text-[#53665c]">
+          Drag to draw a route · hold for a handoff · double tap a line for a pass
+        </p>
+        <div className="mt-1">
+          <PlaybookField
+            positions={formation?.positions || {}}
+            routes={routes}
+            footballs={footballs}
+            onRoutesChange={setRoutes}
+            onFootballsChange={setFootballs}
+            fullscreenOnLandscape
+          />
+        </div>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <button
+            type="button"
+            onClick={() => setRoutes(routes.slice(0, -1))}
+            disabled={routes.length === 0}
+            className="rounded-lg border border-[#d8ded5] px-2 py-2 text-sm font-black disabled:opacity-40"
+          >
+            Undo Line
+          </button>
+          <button
+            type="button"
+            onClick={() => setFootballs(footballs.slice(0, -1))}
+            disabled={footballs.length === 0}
+            className="rounded-lg border border-[#d8ded5] px-2 py-2 text-sm font-black disabled:opacity-40"
+          >
+            Undo Ball
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRoutes([])
+              setFootballs([])
+            }}
+            disabled={routes.length === 0 && footballs.length === 0}
+            className="rounded-lg border border-[#d8ded5] px-2 py-2 text-sm font-black disabled:opacity-40"
+          >
+            Clear
+          </button>
         </div>
 
         <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Pass or run</p>
@@ -1887,9 +1854,10 @@ function FormationEditorSheet({
         />
 
         <div className="mt-3">
-          <FormationField
+          <PlaybookField
             positions={positions}
-            onMove={(slotCode, position) => setPositions((current) => ({ ...current, [slotCode]: position }))}
+            onMovePosition={(slotCode, position) => setPositions((current) => ({ ...current, [slotCode]: position }))}
+            fullscreenOnLandscape
           />
         </div>
 

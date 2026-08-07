@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict'
-import { applySourceAssignmentsToRepeats, getLinkedRepeatCount, resetRepeatedDriveFromSource } from '../lib/drive-patterns'
 import { mergeDriveNotes } from '../lib/drive-notes'
 import { autoFillDrive, computeUsage, getDriveWarnings, isSlotFillable } from '../lib/fair-play'
 import { getGameSummary, getResultCount } from '../lib/game-summary'
-import { applyLineupTemplateToDrive } from '../lib/lineup-templates'
 import { migrateAppState } from '../lib/migrate-state'
 import {
   countPlaysByFormation,
@@ -12,12 +10,20 @@ import {
   filterPlays,
   getFormationPosition
 } from '../lib/playbook'
-import { OFFENSE_SLOTS, DEFENSE_SLOTS, getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey } from '../lib/positions'
+import {
+  createEmptyAssignments,
+  DEFENSE_SLOTS,
+  getSlotPosition,
+  LINE_OF_SCRIMMAGE,
+  OFFENSE_SLOTS,
+  slotPositionKey
+} from '../lib/positions'
 import { snapToField } from '../lib/snapping'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
-import type { LineupTemplate, PlaybookPlay } from '../lib/types'
+import type { PlaybookPlay, ResolvedDrive } from '../lib/types'
+import { createLineups, defaultLineupSlot, findLineup, lineupId, resolveDrive, resolveDrives } from '../lib/lineups'
 
 function assignedIds(assignments: Record<string, string | null>) {
   return Object.values(assignments).filter(Boolean)
@@ -30,18 +36,19 @@ assert.equal(DEFENSE_SLOTS.length, 7)
 assert.equal(new Set(OFFENSE_SLOTS.map((slot) => slot.code)).size, 7)
 assert.equal(new Set(DEFENSE_SLOTS.map((slot) => slot.code)).size, 7)
 
-const emptyOffense = createDrive('test-offense', 'offense', 1, 'test-game')
+const lineups = createLineups('team-wildcats')
+function resolved(drive: ReturnType<typeof createDrive>, assignments: Record<string, string | null> = {}): ResolvedDrive {
+  return { ...drive, assignments: { ...createEmptyAssignments(drive.unit), ...assignments }, backups: {} }
+}
+
+const emptyOffense = resolved(createDrive('test-offense', 'offense', 1, 'test-game'))
 const emptyWarnings = getDriveWarnings(emptyOffense, samplePlayers, unavailable)
 assert.equal(emptyWarnings.some((warning) => warning.message === '7 open positions'), true)
 
-const duplicateDrive = {
-  ...emptyOffense,
-  assignments: {
-    ...emptyOffense.assignments,
-    C: 'p-rhett',
-    QB: 'p-rhett'
-  }
-}
+const duplicateDrive = resolved(createDrive('dupe-test', 'offense', 1, 'test-game'), {
+  C: 'p-rhett',
+  QB: 'p-rhett'
+})
 const duplicateWarnings = getDriveWarnings(duplicateDrive, samplePlayers, unavailable)
 assert.equal(duplicateWarnings.some((warning) => warning.message === 'Duplicate player assignment'), true)
 
@@ -53,13 +60,14 @@ assert.equal(samplePlayers.length, 11)
 assert.equal(samplePlayers.every((player) => player.firstName.trim().length > 0), true)
 
 const gameId = initialAppState.selectedGameId
-const usage = computeUsage(samplePlayers, initialAppState.drives, initialAppState.availabilityByGame[gameId])
+const seedDrives = resolveDrives(initialAppState.drives, initialAppState.lineups)
+const usage = computeUsage(samplePlayers, seedDrives, initialAppState.availabilityByGame[gameId])
 const dodgerUsage = usage.find((playerUsage) => playerUsage.playerId === 'p-dodger')
 const gradyUsage = usage.find((playerUsage) => playerUsage.playerId === 'p-grady')
 assert.equal(dodgerUsage?.totalDrives, 2)
 assert.equal(gradyUsage?.totalDrives, 1)
 
-const seasonUsage = computeSeasonUsage(samplePlayers, initialAppState.drives, initialAppState.availabilityByGame)
+const seasonUsage = computeSeasonUsage(samplePlayers, seedDrives, initialAppState.availabilityByGame)
 const dodgerSeasonUsage = seasonUsage.find((playerUsage) => playerUsage.playerId === 'p-dodger')
 const gradySeasonUsage = seasonUsage.find((playerUsage) => playerUsage.playerId === 'p-grady')
 assert.equal(dodgerSeasonUsage?.totalDrives, 2)
@@ -118,69 +126,6 @@ const pendingTouchdown = getGameSummary([
 ])
 assert.equal(pendingTouchdown.teamScore, 0)
 
-const sourceDrive = {
-  ...createDrive('pattern-source', 'offense', 1, 'pattern-game'),
-  assignments: {
-    ...createDrive('pattern-source-empty', 'offense', 1, 'pattern-game').assignments,
-    QB: 'p-rhett',
-    C: 'p-teddy'
-  }
-}
-const linkedRepeat = {
-  ...createDrive('pattern-repeat', 'offense', 4, 'pattern-game'),
-  sourceDriveId: sourceDrive.id,
-  isRepeated: true,
-  assignments: {
-    ...sourceDrive.assignments,
-    QB: 'p-locklan',
-    C: 'p-rhodes'
-  }
-}
-const customRepeat = {
-  ...linkedRepeat,
-  id: 'pattern-custom',
-  isCustomized: true,
-  assignments: {
-    ...linkedRepeat.assignments,
-    QB: 'p-henry'
-  }
-}
-const patternDrives = [sourceDrive, linkedRepeat, customRepeat]
-const syncedPatternDrives = applySourceAssignmentsToRepeats(patternDrives, sourceDrive.id)
-assert.equal(syncedPatternDrives.find((drive) => drive.id === linkedRepeat.id)?.assignments.QB, 'p-rhett')
-assert.equal(syncedPatternDrives.find((drive) => drive.id === customRepeat.id)?.assignments.QB, 'p-henry')
-assert.equal(getLinkedRepeatCount(patternDrives, sourceDrive.id), 2)
-
-const resetPatternDrives = resetRepeatedDriveFromSource(patternDrives, customRepeat.id)
-const resetCustomRepeat = resetPatternDrives.find((drive) => drive.id === customRepeat.id)
-assert.equal(resetCustomRepeat?.assignments.QB, 'p-rhett')
-assert.equal(resetCustomRepeat?.isCustomized, false)
-
-const template: LineupTemplate = {
-  id: 'template-1',
-  teamId: 'team-wildcats',
-  name: 'Base Offense',
-  unit: 'offense',
-  assignments: {
-    QB: 'p-rhett',
-    C: 'p-luther',
-    RB: 'p-mikey',
-    '1': 'p-dodger',
-    '2': 'p-maddox',
-    '3': 'p-william',
-    '4': 'p-grady'
-  },
-  createdAt: '2026-01-01T00:00:00.000Z',
-  updatedAt: '2026-01-01T00:00:00.000Z'
-}
-const templatedDrive = applyLineupTemplateToDrive(emptyOffense, template, samplePlayers, unavailable)
-assert.equal(templatedDrive.assignments.QB, 'p-rhett')
-assert.equal(templatedDrive.assignments.C, null)
-assert.equal(assignedIds(templatedDrive.assignments).includes('p-luther'), false)
-
-const mismatchedTemplateDrive = applyLineupTemplateToDrive(createDrive('template-defense', 'defense', 1, 'test-game'), template, samplePlayers, unavailable)
-assert.equal(assignedIds(mismatchedTemplateDrive.assignments).length, 0)
-
 const mergedNotes = mergeDriveNotes(
   {
     whatWorked: 'Sweep',
@@ -218,12 +163,13 @@ const legacyPlayer = {
 }
 const legacyState = {
   ...initialAppState,
+  lineups: undefined,
   players: [legacyPlayer],
   games: [{ ...initialAppState.games[0], opponent: 'Eagles' }],
   drives: [
     {
       ...createDrive('legacy-off-1', 'offense', 1),
-      assignments: { ...createDrive('legacy-empty', 'offense', 1).assignments, QB: 'p-jack' }
+      assignments: { QB: 'p-jack' }
     }
   ],
   availabilityByGame: { [gameId]: { 'p-jack': false } }
@@ -236,7 +182,7 @@ assert.equal(migrated.players.some((player) => player.firstName === 'Jack'), fal
 assert.equal('lastName' in migrated.players[0], false)
 assert.equal('jerseyNumber' in migrated.players[0], false)
 assert.equal('opponent' in migrated.games[0], false)
-assert.equal(migrated.drives[0].assignments.QB, 'p-rhett')
+assert.equal(findLineup(migrated.lineups, migrated.drives[0])?.assignments.QB, 'p-rhett')
 assert.equal(migrated.availabilityByGame[gameId]['p-rhett'], false)
 
 const coachEditedState = {
@@ -259,15 +205,12 @@ const customPlayer = {
 }
 const mixedState = {
   ...initialAppState,
+  lineups: undefined,
   players: [legacyPlayer, customPlayer],
   drives: [
     {
       ...createDrive('mixed-off-1', 'offense', 1),
-      assignments: {
-        ...createDrive('mixed-empty', 'offense', 1).assignments,
-        QB: 'p-jack',
-        RB: 'player-custom'
-      }
+      assignments: { QB: 'p-jack', RB: 'player-custom' }
     }
   ],
   availabilityByGame: { [gameId]: { 'p-jack': false, 'player-custom': false } }
@@ -278,15 +221,16 @@ assert.equal(mixed.players.some((player) => player.firstName === 'Jack'), false)
 assert.equal(mixed.players.some((player) => player.firstName === 'Rhett'), true)
 assert.equal(mixed.players.filter((player) => player.id === 'player-custom').length, 1)
 assert.equal(mixed.players.length, 12)
-assert.equal(mixed.drives[0].assignments.QB, 'p-rhett')
-assert.equal(mixed.drives[0].assignments.RB, 'player-custom')
+const mixedLineup = findLineup(mixed.lineups, mixed.drives[0])
+assert.equal(mixedLineup?.assignments.QB, 'p-rhett')
+assert.equal(mixedLineup?.assignments.RB, 'player-custom')
 assert.equal(mixed.availabilityByGame[gameId]['player-custom'], false)
 
 // A player who is out keeps their spot (shown red on the field) until auto-fill replaces them.
-const driveWithOutPlayer = {
-  ...emptyOffense,
-  assignments: { ...emptyOffense.assignments, QB: 'p-luther', C: 'p-rhett' }
-}
+const driveWithOutPlayer = resolved(createDrive('out-test', 'offense', 1, 'test-game'), {
+  QB: 'p-luther',
+  C: 'p-rhett'
+})
 assert.equal(isSlotFillable('p-luther', samplePlayers, unavailable), true)
 assert.equal(isSlotFillable('p-rhett', samplePlayers, unavailable), false)
 assert.equal(isSlotFillable(null, samplePlayers, unavailable), true)
@@ -330,12 +274,13 @@ const preNamedGames = migrateAppState({
     { ...initialAppState.games[0], name: undefined },
     { ...initialAppState.games[0], id: 'game-2', name: undefined }
   ],
-  drives: [{ ...createDrive('legacy-drive', 'offense', 1), backups: undefined, conversion: undefined }]
+  drives: [{ ...createDrive('legacy-drive', 'offense', 1), conversion: undefined }]
 } as unknown as typeof initialAppState)
 assert.equal(preNamedGames.games[0].name, 'Game 1')
 assert.equal(preNamedGames.games[1].name, 'Game 2')
-assert.deepEqual(preNamedGames.drives[0].backups, {})
 assert.equal(preNamedGames.drives[0].conversion, '')
+// Every drive points at one of the eight lineups.
+assert.equal(Boolean(findLineup(preNamedGames.lineups, preNamedGames.drives[0])), true)
 
 const namedGame = migrateAppState({
   ...initialAppState,
@@ -432,6 +377,33 @@ assert.equal(
 const stablePlaybook = migrateAppState(initialAppState)
 assert.deepEqual(stablePlaybook.plays.map((play) => play.id), initialAppState.plays.map((play) => play.id))
 assert.deepEqual(stablePlaybook.formations.map((f) => f.id), initialAppState.formations.map((f) => f.id))
+
+// ---- Lineups ----
+assert.equal(lineups.length, 8)
+assert.equal(lineups.filter((lineup) => lineup.unit === 'offense').length, 4)
+assert.equal(lineups.filter((lineup) => lineup.unit === 'defense').length, 4)
+assert.equal(initialAppState.lineups.length, 8)
+
+// Drives cycle through the four lineups of their unit.
+assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map(defaultLineupSlot), [1, 2, 3, 4, 1, 2, 3, 4, 1])
+assert.equal(createDrive('d1', 'offense', 1, 'g').lineupId, lineupId('offense', 1))
+assert.equal(createDrive('d5', 'offense', 5, 'g').lineupId, lineupId('offense', 1))
+assert.equal(createDrive('d2', 'defense', 2, 'g').lineupId, lineupId('defense', 2))
+
+// A drive can be pointed at any lineup of its unit.
+const pickedDrive = { ...createDrive('picked', 'offense', 1, 'g'), lineupId: lineupId('offense', 3) }
+assert.equal(findLineup(initialAppState.lineups, pickedDrive)?.slot, 3)
+// A drive pointing at nothing falls back to the one its number cycles to.
+const strayDrive = { ...createDrive('stray', 'defense', 2, 'g'), lineupId: 'gone' }
+assert.equal(findLineup(initialAppState.lineups, strayDrive)?.slot, 2)
+assert.equal(findLineup(initialAppState.lineups, strayDrive)?.unit, 'defense')
+
+// Resolving fills a drive in with its lineup's assignments.
+const firstOffense = initialAppState.drives.find((drive) => drive.unit === 'offense')!
+assert.equal(resolveDrive(firstOffense, initialAppState.lineups).assignments.QB, 'p-rhett')
+// The seeded second and third drives take empty lineups, so nobody plays them yet.
+const secondOffense = initialAppState.drives.filter((drive) => drive.unit === 'offense')[1]
+assert.equal(assignedIds(resolveDrive(secondOffense, initialAppState.lineups).assignments).length, 0)
 
 // ---- Snapping ----
 // Nothing nearby: fall back to the grid, which is square on a field twice as wide.

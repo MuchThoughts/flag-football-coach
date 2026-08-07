@@ -1,5 +1,5 @@
 import { isPlayerAvailable, type PlayerUsage } from './fair-play'
-import type { Drive, Game, Player } from './types'
+import type { Game, Player, ResolvedDrive } from './types'
 
 export interface AttendanceSummary {
   playerId: string
@@ -9,7 +9,7 @@ export interface AttendanceSummary {
 
 export function computeSeasonUsage(
   players: Player[],
-  drives: Drive[],
+  drives: ResolvedDrive[],
   availabilityByGame: Record<string, Record<string, boolean>>
 ): PlayerUsage[] {
   return players.map((player) => {

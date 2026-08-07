@@ -63,17 +63,31 @@ export interface DriveNote {
   freeform: string
 }
 
+/** How many lineups a team keeps per unit. Drives cycle through them. */
+export const LINEUPS_PER_UNIT = 4
+
+/**
+ * One of the team's four offensive or defensive lineups. Lineups belong to the
+ * team, not to a game, so they carry from game to game until they are edited.
+ */
+export interface Lineup {
+  id: string
+  teamId: string
+  unit: Unit
+  /** 1 through LINEUPS_PER_UNIT. */
+  slot: number
+  assignments: Record<string, string | null>
+  /** Stand-in per position if the starter goes down, keyed by slot code. */
+  backups: Record<string, string | null>
+}
+
 export interface Drive {
   id: string
   gameId: string
   unit: Unit
   driveNumber: number
-  sourceDriveId?: string
-  isRepeated: boolean
-  isCustomized: boolean
-  assignments: Record<string, string | null>
-  /** Stand-in per position if the starter goes down, keyed by slot code. */
-  backups: Record<string, string | null>
+  /** Which of the unit's lineups takes this drive. */
+  lineupId: string
   result: DriveResult
   conversion: Conversion
   notes: DriveNote
@@ -81,6 +95,12 @@ export interface Drive {
   endedAt?: string
   status: DriveStatus
   locked: boolean
+}
+
+/** A drive with its lineup's assignments filled in, for anything that reads them. */
+export interface ResolvedDrive extends Drive {
+  assignments: Record<string, string | null>
+  backups: Record<string, string | null>
 }
 
 export interface PracticePlan {
@@ -156,16 +176,6 @@ export interface PlaybookPlay {
   updatedAt: string
 }
 
-export interface LineupTemplate {
-  id: string
-  teamId: string
-  name: string
-  unit: Unit
-  assignments: Record<string, string | null>
-  createdAt: string
-  updatedAt: string
-}
-
 export interface AppSettings {
   role: 'head' | 'assistant'
   assistantCanAddNotes: boolean
@@ -184,7 +194,7 @@ export interface AppState {
   practiceTemplates: PracticeTemplate[]
   plays: PlaybookPlay[]
   formations: Formation[]
-  lineupTemplates: LineupTemplate[]
+  lineups: Lineup[]
   slotPositions: SlotPositions
   appSettings: AppSettings
 }

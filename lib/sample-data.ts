@@ -1,5 +1,5 @@
-import type { AppState, Drive, DriveNote, Player, Unit } from './types'
-import { createEmptyAssignments } from './positions'
+import type { AppState, Drive, DriveNote, Lineup, Player, Unit } from './types'
+import { createLineups, defaultLineupSlot, lineupId } from './lineups'
 import { defaultFormationPositions } from './playbook'
 
 const teamId = 'team-wildcats'
@@ -21,10 +21,7 @@ export function createDrive(id: string, unit: Unit, driveNumber: number, game = 
     gameId: game,
     unit,
     driveNumber,
-    isRepeated: false,
-    isCustomized: false,
-    assignments: createEmptyAssignments(unit),
-    backups: {},
+    lineupId: lineupId(unit, defaultLineupSlot(driveNumber)),
     result: '',
     conversion: '',
     notes: emptyNote(),
@@ -33,15 +30,37 @@ export function createDrive(id: string, unit: Unit, driveNumber: number, game = 
   }
 }
 
-function withAssignments(drive: Drive, assignments: Record<string, string>): Drive {
-  return {
-    ...drive,
-    assignments: {
-      ...drive.assignments,
-      ...assignments
-    }
-  }
+function withAssignments(lineups: Lineup[], unit: Unit, slot: number, assignments: Record<string, string>): Lineup[] {
+  return lineups.map((lineup) =>
+    lineup.unit === unit && lineup.slot === slot
+      ? { ...lineup, assignments: { ...lineup.assignments, ...assignments } }
+      : lineup
+  )
 }
+
+/** The starters go in the first lineup of each unit; the rest are left to fill in. */
+const sampleLineups: Lineup[] = withAssignments(
+  withAssignments(createLineups(teamId), 'offense', 1, {
+    QB: 'p-rhett',
+    RB: 'p-mikey',
+    C: 'p-teddy',
+    '1': 'p-dodger',
+    '2': 'p-maddox',
+    '3': 'p-william',
+    '4': 'p-grady'
+  }),
+  'defense',
+  1,
+  {
+    R: 'p-locklan',
+    MLB: 'p-luther',
+    S: 'p-rhodes',
+    LE: 'p-henry',
+    RE: 'p-dodger',
+    LCB: 'p-maddox',
+    RCB: 'p-william'
+  }
+)
 
 const rosterNames = [
   'Rhett',
@@ -94,24 +113,8 @@ export const initialAppState: AppState = {
   ],
   selectedGameId: gameId,
   drives: [
-    withAssignments(createDrive('drive-off-1', 'offense', 1), {
-      QB: 'p-rhett',
-      RB: 'p-mikey',
-      C: 'p-teddy',
-      '1': 'p-dodger',
-      '2': 'p-maddox',
-      '3': 'p-william',
-      '4': 'p-grady'
-    }),
-    withAssignments(createDrive('drive-def-1', 'defense', 1), {
-      R: 'p-locklan',
-      MLB: 'p-luther',
-      S: 'p-rhodes',
-      LE: 'p-henry',
-      RE: 'p-dodger',
-      LCB: 'p-maddox',
-      RCB: 'p-william'
-    }),
+    createDrive('drive-off-1', 'offense', 1),
+    createDrive('drive-def-1', 'defense', 1),
     createDrive('drive-off-2', 'offense', 2),
     createDrive('drive-def-2', 'defense', 2),
     createDrive('drive-off-3', 'offense', 3),
@@ -207,7 +210,7 @@ export const initialAppState: AppState = {
       updatedAt: seedTimestamp
     }
   ],
-  lineupTemplates: [],
+  lineups: sampleLineups,
   slotPositions: {},
   appSettings: {
     role: 'head',

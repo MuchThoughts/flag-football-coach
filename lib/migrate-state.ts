@@ -1,4 +1,18 @@
-import type { AppState, Drive, Formation, Game, PlayArea, PlaybookPlay, Player, PlayType, SlotPositions } from './types'
+import type {
+  AppState,
+  Drive,
+  Formation,
+  Game,
+  Lineup,
+  PlayArea,
+  PlaybookPlay,
+  Player,
+  PlayType,
+  SlotPositions,
+  Unit
+} from './types'
+import { LINEUPS_PER_UNIT } from './types'
+import { createLineups, defaultLineupSlot, lineupId } from './lineups'
 import { defaultFormationPositions } from './playbook'
 import { initialAppState, samplePlayers } from './sample-data'
 
@@ -43,10 +57,54 @@ function normalizeGame(game: Game, index: number): Game {
   }
 }
 
+interface LegacyDrive extends Drive {
+  assignments?: Record<string, string | null>
+  backups?: Record<string, string | null>
+}
+
+/**
+ * Assignments used to live on each drive. They now live on four lineups per
+ * unit, so the earliest drives of each unit become those lineups and every
+ * drive points at the lineup its number cycles to.
+ */
+function migrateLineups(state: AppState): AppState {
+  const saved = state.lineups || []
+  const complete =
+    saved.length === LINEUPS_PER_UNIT * 2 && saved.every((lineup) => lineup.assignments && lineup.unit && lineup.slot)
+  if (complete) {
+    return {
+      ...state,
+      drives: state.drives.map((drive) => ({
+        ...drive,
+        lineupId: drive.lineupId || lineupId(drive.unit, defaultLineupSlot(drive.driveNumber))
+      }))
+    }
+  }
+
+  const legacyDrives = state.drives as LegacyDrive[]
+  const lineups: Lineup[] = createLineups(state.team.id).map((lineup) => {
+    const source = legacyDrives
+      .filter((drive) => drive.unit === lineup.unit && drive.assignments)
+      .sort((a, b) => a.driveNumber - b.driveNumber)[lineup.slot - 1]
+
+    return source
+      ? { ...lineup, assignments: { ...lineup.assignments, ...source.assignments }, backups: { ...source.backups } }
+      : lineup
+  })
+
+  return {
+    ...state,
+    lineups,
+    drives: legacyDrives.map((drive) => {
+      const { assignments, backups, ...rest } = drive
+      return { ...rest, lineupId: drive.lineupId || lineupId(drive.unit, defaultLineupSlot(drive.driveNumber)) }
+    })
+  }
+}
+
 function normalizeDrive(drive: Drive): Drive {
   return {
     ...drive,
-    backups: drive.backups || {},
     conversion: drive.conversion || ''
   }
 }
@@ -92,10 +150,10 @@ function replaceDemoRoster(state: AppState): AppState {
       ...samplePlayers,
       ...coachAddedPlayers.filter((player) => !samplePlayers.some((seed) => seed.id === player.id))
     ],
-    drives: state.drives.map((drive) => ({
-      ...drive,
-      assignments: remapAssignments(drive.assignments, idMap),
-      backups: remapAssignments(drive.backups || {}, idMap)
+    lineups: (state.lineups || []).map((lineup) => ({
+      ...lineup,
+      assignments: remapAssignments(lineup.assignments, idMap),
+      backups: remapAssignments(lineup.backups || {}, idMap)
     })),
     availabilityByGame: Object.entries(state.availabilityByGame || {}).reduce<
       Record<string, Record<string, boolean>>
@@ -112,10 +170,6 @@ function replaceDemoRoster(state: AppState): AppState {
       )
       return next
     }, {}),
-    lineupTemplates: (state.lineupTemplates || []).map((template) => ({
-      ...template,
-      assignments: remapAssignments(template.assignments, idMap)
-    }))
   }
 }
 
@@ -247,32 +301,36 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
  * and upgrades the demo roster to the real one.
  */
 export function migrateAppState(saved: AppState): AppState {
-  const state = replaceDemoRoster({
-    ...initialAppState,
-    ...saved,
-    team: {
-      ...(saved.team || initialAppState.team),
-      // The old placeholder team name predates the real one.
-      name: !saved.team?.name || saved.team.name === 'Wildcats' ? initialAppState.team.name : saved.team.name
-    },
-    players: (saved.players || []).map(normalizePlayer),
-    games: (saved.games || initialAppState.games).map(normalizeGame),
-    drives: (saved.drives || []).map(normalizeDrive),
-    availabilityByGame: saved.availabilityByGame || {},
-    practices: saved.practices || [],
-    practiceTemplates: saved.practiceTemplates || initialAppState.practiceTemplates,
-    plays: saved.plays || [],
-    formations: saved.formations || [],
-    lineupTemplates: saved.lineupTemplates || [],
-    slotPositions: saved.slotPositions || {},
-    appSettings: saved.appSettings || initialAppState.appSettings
-  })
+  // Lineups have to exist before the roster swap, since that is what it remaps.
+  const state = replaceDemoRoster(
+    migrateLineups(
+      migrateFieldLayouts({
+        ...initialAppState,
+        ...saved,
+        team: {
+          ...(saved.team || initialAppState.team),
+          // The old placeholder team name predates the real one.
+          name: !saved.team?.name || saved.team.name === 'Wildcats' ? initialAppState.team.name : saved.team.name
+        },
+        players: (saved.players || []).map(normalizePlayer),
+        games: (saved.games || initialAppState.games).map(normalizeGame),
+        drives: (saved.drives || []).map(normalizeDrive),
+        availabilityByGame: saved.availabilityByGame || {},
+        practices: saved.practices || [],
+        practiceTemplates: saved.practiceTemplates || initialAppState.practiceTemplates,
+        plays: saved.plays || [],
+        formations: saved.formations || [],
+        lineups: saved.lineups || [],
+        slotPositions: saved.slotPositions || {},
+        appSettings: saved.appSettings || initialAppState.appSettings
+      })
+    )
+  )
 
-  const relaidOut = migrateFieldLayouts(state)
-  const playbook = migratePlaybook(relaidOut)
+  const playbook = migratePlaybook(state)
 
   return {
-    ...relaidOut,
+    ...state,
     players: state.players.map(normalizePlayer),
     plays: playbook.plays,
     formations: playbook.formations

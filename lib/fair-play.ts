@@ -1,4 +1,4 @@
-import type { Drive, Player, Unit } from './types'
+import type { Player, ResolvedDrive, Unit } from './types'
 import { SLOTS_BY_UNIT } from './positions'
 
 export interface PlayerUsage {
@@ -16,7 +16,7 @@ export interface FairPlayWarning {
   message: string
 }
 
-export function getAssignedPlayerIds(drive: Drive) {
+export function getAssignedPlayerIds(drive: ResolvedDrive) {
   return Object.values(drive.assignments).filter(Boolean) as string[]
 }
 
@@ -25,7 +25,7 @@ export function isPlayerAvailable(playerId: string, availability: Record<string,
 }
 
 export function getDriveWarnings(
-  drive: Drive,
+  drive: ResolvedDrive,
   players: Player[],
   availability: Record<string, boolean>
 ): FairPlayWarning[] {
@@ -67,7 +67,7 @@ export function getDriveWarnings(
 
 export function computeUsage(
   players: Player[],
-  drives: Drive[],
+  drives: ResolvedDrive[],
   availability: Record<string, boolean>
 ): PlayerUsage[] {
   return players.map((player) => {
@@ -105,7 +105,7 @@ export function computeUsage(
 
 export function getFairPlayWarnings(
   players: Player[],
-  drives: Drive[],
+  drives: ResolvedDrive[],
   availability: Record<string, boolean>
 ): FairPlayWarning[] {
   const availablePlayers = players.filter((player) => player.active && isPlayerAvailable(player.id, availability))
@@ -154,11 +154,11 @@ export function isSlotFillable(playerId: string | null, players: Player[], avail
 }
 
 export function autoFillDrive(
-  drive: Drive,
+  drive: ResolvedDrive,
   players: Player[],
   availability: Record<string, boolean>,
-  allGameDrives: Drive[]
-): Drive {
+  allGameDrives: ResolvedDrive[]
+): ResolvedDrive {
   const assignments = { ...drive.assignments }
 
   // Players who are out keep their spot until something fills it; auto-fill replaces them.
@@ -193,11 +193,7 @@ export function autoFillDrive(
     }
   })
 
-  return {
-    ...drive,
-    assignments,
-    isCustomized: drive.isRepeated ? true : drive.isCustomized
-  }
+  return { ...drive, assignments }
 }
 
 export function getRating(player: Player, unit: Unit, ratingKey: string) {

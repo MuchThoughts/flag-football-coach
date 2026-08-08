@@ -22,6 +22,11 @@ export interface PlayComponent {
   needsReceiver?: boolean
   /** True when left or right can be added. */
   hasDirection?: boolean
+  /**
+   * No longer offered in the picker, but still understood when reading a play
+   * the team wrote before it was dropped.
+   */
+  retired?: boolean
   type: PlayType
   area: PlayArea
 }
@@ -41,50 +46,25 @@ export const RECEIVER_CODES = ['1', '2', '3', '4', 'C', 'RB']
 export const PLAY_COMPONENTS: PlayComponent[] = [
   { id: 'hb-dive', label: 'HB Dive', group: 'backfield', phrase: 'HB Dive', aliases: ['RB Dive', 'Dive'], hasDirection: true, type: 'run', area: 'middle' },
   { id: 'hb-stretch', label: 'HB Stretch', group: 'backfield', phrase: 'HB Stretch', aliases: ['RB Stretch', 'Stretch'], hasDirection: true, type: 'run', area: 'sidelines' },
-  { id: 'hb-toss', label: 'HB Toss', group: 'backfield', phrase: 'HB Toss', aliases: ['RB Toss'], hasDirection: true, type: 'run', area: 'sidelines' },
   { id: 'rb-swing', label: 'RB Swing', group: 'backfield', phrase: 'RB Swing', aliases: ['HB Swing', 'Swing'], type: 'pass', area: 'sidelines' },
   { id: 'rb-screen', label: 'RB Screen', group: 'backfield', phrase: 'RB Screen', aliases: ['HB Screen'], type: 'pass', area: 'sidelines' },
-  { id: 'rb-flat', label: 'RB Flat', group: 'backfield', phrase: 'RB Flat', type: 'pass', area: 'sidelines' },
 
   { id: 'qb-keeper', label: 'QB Keeper', group: 'quarterback', phrase: 'QB Keeper', type: 'run', area: 'middle' },
   { id: 'qb-sneak', label: 'QB Sneak', group: 'quarterback', phrase: 'QB Sneak', aliases: ['Quick Sneak', 'Sneak'], type: 'run', area: 'middle' },
   { id: 'qb-draw', label: 'QB Draw', group: 'quarterback', phrase: 'QB Draw', type: 'run', area: 'middle' },
   { id: 'qb-bootleg', label: 'QB Bootleg', group: 'quarterback', phrase: 'QB Bootleg', aliases: ['QB Boot', 'Bootleg', 'Boot'], hasDirection: true, type: 'run', area: 'sidelines' },
-  { id: 'bootleg-pass', label: 'Bootleg Pass', group: 'quarterback', phrase: 'Bootleg Pass', hasDirection: true, type: 'pass', area: 'sidelines' },
-  { id: 'pass', label: 'Pass', group: 'quarterback', phrase: 'Pass', aliases: ['Pass Back'], type: 'pass', area: 'middle' },
 
-  { id: 'carry-dive', label: 'Dive', group: 'carries', phrase: 'Dive', needsReceiver: true, hasDirection: true, type: 'run', area: 'middle' },
   { id: 'sweep', label: 'Sweep', group: 'carries', phrase: 'Sweep', needsReceiver: true, type: 'run', area: 'sidelines' },
   { id: 'reverse', label: 'Reverse', group: 'carries', phrase: 'Reverse', needsReceiver: true, type: 'run', area: 'sidelines' },
-  { id: 'toss', label: 'Toss', group: 'carries', phrase: 'Toss', needsReceiver: true, hasDirection: true, type: 'run', area: 'sidelines' },
-  { id: 'screen', label: 'Screen', group: 'carries', phrase: 'Screen', needsReceiver: true, type: 'pass', area: 'sidelines' },
-  { id: 'end-around', label: 'End Around', group: 'carries', phrase: 'End Around', needsReceiver: true, type: 'run', area: 'sidelines' },
 
   { id: 'motion', label: 'Motion', group: 'motion', phrase: 'Motion', needsReceiver: true, hasDirection: true, type: 'run', area: 'sidelines' },
-  { id: 'motion-sweep', label: 'Motion Sweep', group: 'motion', phrase: 'Motion Sweep', needsReceiver: true, type: 'run', area: 'sidelines' },
-  { id: 'shift', label: 'Shift', group: 'motion', phrase: 'Shift', needsReceiver: true, hasDirection: true, type: 'run', area: 'middle' },
 
-  { id: 'wr-slants', label: 'WR Slants', group: 'concepts', phrase: 'WR Slants', type: 'pass', area: 'middle' },
-  { id: 'wr-gos', label: 'WR Gos', group: 'concepts', phrase: 'WR Go', aliases: ['WR Gos'], type: 'pass', area: 'deep' },
-  { id: 'wr-ins', label: 'WR Ins', group: 'concepts', phrase: 'WR Ins', type: 'pass', area: 'middle' },
-  { id: 'wings-flats', label: 'Wings Flats', group: 'concepts', phrase: 'Wings Flats', aliases: ['Wings Flat', 'Flats'], type: 'pass', area: 'sidelines' },
-  { id: 'wings-corner', label: 'Wings Corner', group: 'concepts', phrase: 'Wings Corner', type: 'pass', area: 'deep' },
-  { id: 'wings-in', label: 'Wings In', group: 'concepts', phrase: 'Wings In', type: 'pass', area: 'middle' },
-  { id: 'wings-out', label: 'Wings Out', group: 'concepts', phrase: 'Wings Out', type: 'pass', area: 'sidelines' },
-  { id: 'wings-wheel', label: 'Wings Wheel', group: 'concepts', phrase: 'Wings Wheel', aliases: ['Wings Wheels'], type: 'pass', area: 'deep' },
-  { id: 'center-go', label: 'Center Go', group: 'concepts', phrase: 'Center Go', type: 'pass', area: 'deep' },
-  { id: 'center-corner', label: 'Center Corner', group: 'concepts', phrase: 'Center Corner', type: 'pass', area: 'deep' },
-  { id: 'center-out', label: 'Center Out', group: 'concepts', phrase: 'Center Out', type: 'pass', area: 'sidelines' },
-  { id: 'crossing', label: 'Crossing Route', group: 'concepts', phrase: 'Crossing Route', aliases: ['Center Cross', 'Crossing'], type: 'pass', area: 'middle' },
-  { id: 'explosion', label: 'Explosion', group: 'concepts', phrase: 'Explosion', type: 'pass', area: 'deep' },
-  { id: 'flood', label: 'Flood', group: 'concepts', phrase: 'Flood', hasDirection: true, type: 'pass', area: 'sidelines' },
   { id: 'high-low', label: 'High Low', group: 'concepts', phrase: 'High Low', type: 'pass', area: 'middle' },
+  { id: 'explosion', label: 'Explosion', group: 'concepts', phrase: 'Explosion', type: 'pass', area: 'deep' },
   { id: 'slant-wheel', label: 'Slant Wheel', group: 'concepts', phrase: 'Slant Wheel', type: 'pass', area: 'deep' },
-  { id: 'slant-go', label: 'Slant Go', group: 'concepts', phrase: 'Slant Go', type: 'pass', area: 'deep' },
-  { id: 'slow-wheel', label: 'Slow Wheel', group: 'concepts', phrase: 'Slow Wheel', type: 'pass', area: 'deep' },
-  { id: 'chaos', label: 'Chaos', group: 'concepts', phrase: 'Chaos', type: 'pass', area: 'deep' },
-  { id: 'jail-break', label: 'Jail Break', group: 'concepts', phrase: 'Jail Break', type: 'pass', area: 'sidelines' },
-  { id: 'throwback', label: 'Throwback', group: 'concepts', phrase: 'Throwback', aliases: ['Flat Throwback'], type: 'pass', area: 'sidelines' },
+  { id: 'all-go', label: 'All Go', group: 'concepts', phrase: 'All Go', aliases: ['All Gos'], type: 'pass', area: 'deep' },
+  { id: 'flood', label: 'Flood', group: 'concepts', phrase: 'Flood', hasDirection: true, type: 'pass', area: 'sidelines' },
+  { id: 'hitches', label: 'Hitches', group: 'concepts', phrase: 'Hitches', type: 'pass', area: 'middle' },
 
   { id: 'route-go', label: 'Go', group: 'routes', phrase: 'Go', needsReceiver: true, type: 'pass', area: 'deep' },
   { id: 'route-slant', label: 'Slant', group: 'routes', phrase: 'Slant', needsReceiver: true, type: 'pass', area: 'middle' },
@@ -93,16 +73,46 @@ export const PLAY_COMPONENTS: PlayComponent[] = [
   { id: 'route-flat', label: 'Flat', group: 'routes', phrase: 'Flat', needsReceiver: true, type: 'pass', area: 'sidelines' },
   { id: 'route-out', label: 'Out', group: 'routes', phrase: 'Out', needsReceiver: true, type: 'pass', area: 'sidelines' },
   { id: 'route-in', label: 'In', group: 'routes', phrase: 'In', needsReceiver: true, type: 'pass', area: 'middle' },
-  { id: 'route-hook', label: 'Hook', group: 'routes', phrase: 'Hook', needsReceiver: true, type: 'pass', area: 'middle' },
-  { id: 'route-cross', label: 'Cross', group: 'routes', phrase: 'Cross', needsReceiver: true, type: 'pass', area: 'middle' }
+  { id: 'route-hitch', label: 'Hitch', group: 'routes', phrase: 'Hitch', aliases: ['Hook'], needsReceiver: true, type: 'pass', area: 'middle' },
+  { id: 'screen', label: 'Screen', group: 'routes', phrase: 'Screen', needsReceiver: true, type: 'pass', area: 'sidelines' },
+
+  // Retired: dropped from the picker, still read when an older play names them.
+  { id: 'hb-toss', label: 'HB Toss', group: 'backfield', phrase: 'HB Toss', aliases: ['RB Toss'], hasDirection: true, retired: true, type: 'run', area: 'sidelines' },
+  { id: 'rb-flat', label: 'RB Flat', group: 'backfield', phrase: 'RB Flat', retired: true, type: 'pass', area: 'sidelines' },
+  { id: 'bootleg-pass', label: 'Bootleg Pass', group: 'quarterback', phrase: 'Bootleg Pass', hasDirection: true, retired: true, type: 'pass', area: 'sidelines' },
+  { id: 'pass', label: 'Pass', group: 'quarterback', phrase: 'Pass', aliases: ['Pass Back'], retired: true, type: 'pass', area: 'middle' },
+  { id: 'carry-dive', label: 'Dive', group: 'carries', phrase: 'Dive', needsReceiver: true, hasDirection: true, retired: true, type: 'run', area: 'middle' },
+  { id: 'toss', label: 'Toss', group: 'carries', phrase: 'Toss', needsReceiver: true, hasDirection: true, retired: true, type: 'run', area: 'sidelines' },
+  { id: 'end-around', label: 'End Around', group: 'carries', phrase: 'End Around', needsReceiver: true, retired: true, type: 'run', area: 'sidelines' },
+  { id: 'motion-sweep', label: 'Motion Sweep', group: 'motion', phrase: 'Motion Sweep', needsReceiver: true, retired: true, type: 'run', area: 'sidelines' },
+  { id: 'shift', label: 'Shift', group: 'motion', phrase: 'Shift', needsReceiver: true, hasDirection: true, retired: true, type: 'run', area: 'middle' },
+  { id: 'wr-slants', label: 'WR Slants', group: 'concepts', phrase: 'WR Slants', retired: true, type: 'pass', area: 'middle' },
+  { id: 'wr-gos', label: 'WR Gos', group: 'concepts', phrase: 'WR Go', aliases: ['WR Gos'], retired: true, type: 'pass', area: 'deep' },
+  { id: 'wr-ins', label: 'WR Ins', group: 'concepts', phrase: 'WR Ins', retired: true, type: 'pass', area: 'middle' },
+  { id: 'wings-flats', label: 'Wings Flats', group: 'concepts', phrase: 'Wings Flats', aliases: ['Wings Flat', 'Flats'], retired: true, type: 'pass', area: 'sidelines' },
+  { id: 'wings-corner', label: 'Wings Corner', group: 'concepts', phrase: 'Wings Corner', retired: true, type: 'pass', area: 'deep' },
+  { id: 'wings-in', label: 'Wings In', group: 'concepts', phrase: 'Wings In', retired: true, type: 'pass', area: 'middle' },
+  { id: 'wings-out', label: 'Wings Out', group: 'concepts', phrase: 'Wings Out', retired: true, type: 'pass', area: 'sidelines' },
+  { id: 'wings-wheel', label: 'Wings Wheel', group: 'concepts', phrase: 'Wings Wheel', aliases: ['Wings Wheels'], retired: true, type: 'pass', area: 'deep' },
+  { id: 'center-go', label: 'Center Go', group: 'concepts', phrase: 'Center Go', retired: true, type: 'pass', area: 'deep' },
+  { id: 'center-corner', label: 'Center Corner', group: 'concepts', phrase: 'Center Corner', retired: true, type: 'pass', area: 'deep' },
+  { id: 'center-out', label: 'Center Out', group: 'concepts', phrase: 'Center Out', retired: true, type: 'pass', area: 'sidelines' },
+  { id: 'crossing', label: 'Crossing Route', group: 'concepts', phrase: 'Crossing Route', aliases: ['Center Cross', 'Crossing'], retired: true, type: 'pass', area: 'middle' },
+  { id: 'slant-go', label: 'Slant Go', group: 'concepts', phrase: 'Slant Go', retired: true, type: 'pass', area: 'deep' },
+  { id: 'slow-wheel', label: 'Slow Wheel', group: 'concepts', phrase: 'Slow Wheel', retired: true, type: 'pass', area: 'deep' },
+  { id: 'chaos', label: 'Chaos', group: 'concepts', phrase: 'Chaos', retired: true, type: 'pass', area: 'deep' },
+  { id: 'jail-break', label: 'Jail Break', group: 'concepts', phrase: 'Jail Break', retired: true, type: 'pass', area: 'sidelines' },
+  { id: 'throwback', label: 'Throwback', group: 'concepts', phrase: 'Throwback', aliases: ['Flat Throwback'], retired: true, type: 'pass', area: 'sidelines' },
+  { id: 'route-cross', label: 'Cross', group: 'routes', phrase: 'Cross', needsReceiver: true, retired: true, type: 'pass', area: 'middle' }
 ]
 
 export function findComponent(componentId: string) {
   return PLAY_COMPONENTS.find((component) => component.id === componentId)
 }
 
+/** What the picker offers: everything still in the playbook's vocabulary. */
 export function componentsInGroup(group: ComponentGroup) {
-  return PLAY_COMPONENTS.filter((component) => component.group === group)
+  return PLAY_COMPONENTS.filter((component) => component.group === group && !component.retired)
 }
 
 /** One step written out, e.g. "Fake 2 / 3 Sweep" or "QB Bootleg Right". */

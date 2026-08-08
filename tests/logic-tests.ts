@@ -13,6 +13,8 @@ import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import {
   classifySteps,
+  COMPONENT_GROUPS,
+  componentsInGroup,
   findComponent,
   parsePlayCall,
   playCallFromSteps,
@@ -713,3 +715,37 @@ assert.equal(
 )
 // A name the builder cannot say has no components behind it.
 assert.equal(stepsFromPlay({ ...builtPlay, name: 'Twins Statue Of Liberty' }, seeded.formations), null)
+
+// The picker offers exactly the playbook's vocabulary; retired components stay
+// readable so older plays still open, but are never offered again.
+assert.deepEqual(
+  COMPONENT_GROUPS.map((group) => [group.label, componentsInGroup(group.id).map((component) => component.label)]),
+  [
+    ['Backfield', ['HB Dive', 'HB Stretch', 'RB Swing', 'RB Screen']],
+    ['Quarterback', ['QB Keeper', 'QB Sneak', 'QB Draw', 'QB Bootleg']],
+    ['Receiver runs', ['Sweep', 'Reverse']],
+    ['Motion', ['Motion']],
+    ['Pass concepts', ['High Low', 'Explosion', 'Slant Wheel', 'All Go', 'Flood', 'Hitches']],
+    ['Single routes', ['Go', 'Slant', 'Corner', 'Wheel', 'Flat', 'Out', 'In', 'Hitch', 'Screen']]
+  ]
+)
+// A screen belongs to a receiver, like the other single routes.
+assert.equal(findComponent('screen')!.group, 'routes')
+assert.equal(findComponent('screen')!.needsReceiver, true)
+// Hook was renamed, and old calls that say it still read back.
+assert.equal(findComponent('route-hitch')!.phrase, 'Hitch')
+assert.deepEqual(parsePlayCall('3 Hook')!.map((step) => step.componentId), ['route-hitch'])
+assert.equal(playCallFromSteps(parsePlayCall('3 Hook')!), '3 Hitch')
+// The two new concepts.
+assert.equal(playCallFromSteps(parsePlayCall('All Go')!), 'All Go')
+assert.equal(playCallFromSteps(parsePlayCall('Hitches')!), 'Hitches')
+// "All Go" is a concept, not somebody's go route.
+assert.deepEqual(parsePlayCall('All Go')!.map((step) => [step.componentId, step.receivers]), [['all-go', undefined]])
+assert.deepEqual(parsePlayCall('2 Go')!.map((step) => [step.componentId, step.receivers]), [['route-go', ['2']]])
+// Everything dropped from the picker is still understood.
+assert.equal(
+  PLAY_COMPONENTS.filter((component) => component.retired).every((component) => Boolean(parsePlayCall(
+    component.needsReceiver ? `3 ${component.phrase}` : component.phrase
+  ))),
+  true
+)

@@ -32,7 +32,8 @@ import {
   computeUsage,
   countSitOuts,
   getDriveWarnings,
-  getRestWindowDrives,
+  getRestWindowLineups,
+  orderedLineups,
   isPlayerAvailable
 } from '@/lib/fair-play'
 import { getGameSummary } from '@/lib/game-summary'
@@ -1322,7 +1323,7 @@ function PlanningPage({
         )}
       </section>
 
-      <PlayingTimeTable players={availablePlayers.concat(unavailablePlayers)} drives={resolvedDrives} availability={availability} />
+      <PlayingTimeTable players={availablePlayers.concat(unavailablePlayers)} lineups={lineups} availability={availability} />
     </div>
   )
 }
@@ -2820,28 +2821,28 @@ function NewGameSheet({
  */
 function PlayingTimeTable({
   players,
-  drives,
+  lineups,
   availability
 }: {
   players: Player[]
-  drives: ResolvedDrive[]
+  lineups: Lineup[]
   availability: Record<string, boolean>
 }) {
-  function slotFor(drive: ResolvedDrive, playerId: string) {
-    const entry = Object.entries(drive.assignments).find(([, assigned]) => assigned === playerId)
+  function slotFor(lineup: Lineup, playerId: string) {
+    const entry = Object.entries(lineup.assignments).find(([, assigned]) => assigned === playerId)
     return entry?.[0]
   }
 
-  // The lineups only go four deep, so anything past the fourth drive each way is noise.
-  const shownDrives = drives.filter((drive) => drive.driveNumber <= LINEUPS_PER_UNIT)
-  const restWindow = getRestWindowDrives(drives)
+  // The eight lineups, alternating off and def, in the order they get used.
+  const columns = orderedLineups(lineups)
+  const restWindow = getRestWindowLineups(lineups)
 
   return (
     <section className="space-y-3 border-t border-[#d8ded5] pt-4">
       <div>
         <h2 className="font-display text-xl font-black">Playing Time</h2>
         <p className="text-sm font-bold text-[#53665c]">
-          The number by each name is how many of the first {restWindow.length} drives they sit.
+          The number by each name is how many of the first {restWindow.length} lineups they sit.
         </p>
       </div>
 
@@ -2852,15 +2853,15 @@ function PlayingTimeTable({
               <th className="sticky left-0 z-10 bg-[#f7f5ee] px-1 py-1 text-left text-[10px] font-black uppercase text-[#53665c]">
                 Player · Sits
               </th>
-              {shownDrives.map((drive) => (
+              {columns.map((lineup) => (
                 <th
-                  key={drive.id}
+                  key={lineup.id}
                   className={`px-0.5 py-1 text-[9px] font-black uppercase ${
-                    drive.unit === 'offense' ? 'text-[#1f7a4d]' : 'text-[#10201a]'
+                    lineup.unit === 'offense' ? 'text-[#1f7a4d]' : 'text-[#10201a]'
                   }`}
                 >
-                  {drive.unit === 'offense' ? 'OFF' : 'DEF'}
-                  <span className="block text-[10px]">{drive.driveNumber}</span>
+                  {lineup.unit === 'offense' ? 'OFF' : 'DEF'}
+                  <span className="block text-[10px]">{lineup.slot}</span>
                 </th>
               ))}
             </tr>
@@ -2868,15 +2869,15 @@ function PlayingTimeTable({
           <tbody>
             {players.map((player) => {
               const out = !isPlayerAvailable(player.id, availability)
-              const sits = out ? restWindow.length : countSitOuts(player.id, drives)
-              const playing = out ? 0 : shownDrives.filter((drive) => slotFor(drive, player.id)).length
+              const sits = out ? restWindow.length : countSitOuts(player.id, lineups)
+              const playing = out ? 0 : columns.filter((lineup) => slotFor(lineup, player.id)).length
               return (
                 <tr key={player.id} className={out ? 'opacity-60' : ''}>
                   <th className="sticky left-0 z-10 bg-[#f7f5ee] px-1 py-1 text-left">
                     <span className="flex items-center gap-1">
                       <span className="min-w-0 truncate text-xs font-black">{player.firstName}</span>
                       <span
-                        aria-label={`Sits ${sits} of the first ${restWindow.length} drives`}
+                        aria-label={`Sits ${sits} of the first ${restWindow.length} lineups`}
                         className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-black ${
                           sits >= 3 ? 'bg-[#c2412d] text-white' : sits === 0 ? 'bg-[#1f7a4d] text-white' : 'bg-[#d8ded5] text-[#10201a]'
                         }`}
@@ -2885,13 +2886,13 @@ function PlayingTimeTable({
                       </span>
                     </span>
                     <span className="block text-[9px] font-bold text-[#53665c]">
-                      {playing}/{shownDrives.length} played
+                      {playing}/{columns.length} in
                     </span>
                   </th>
-                  {shownDrives.map((drive) => {
-                    const slotCode = out ? undefined : slotFor(drive, player.id)
+                  {columns.map((lineup) => {
+                    const slotCode = out ? undefined : slotFor(lineup, player.id)
                     return (
-                      <td key={drive.id} className="px-0.5 py-1">
+                      <td key={lineup.id} className="px-0.5 py-1">
                         <span
                           className={`block rounded px-1 py-1 text-[10px] font-black uppercase ${
                             slotCode ? 'bg-[#1f7a4d] text-white' : 'bg-[#c2412d]/15 text-[#c2412d]'

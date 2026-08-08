@@ -5,7 +5,8 @@ import {
   computeUsage,
   countSitOuts,
   getDriveWarnings,
-  getRestWindowDrives,
+  getRestWindowLineups,
+  orderedLineups,
   isSlotFillable
 } from '../lib/fair-play'
 import { getGameSummary, getResultCount } from '../lib/game-summary'
@@ -43,7 +44,7 @@ import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
 import type { PlaybookPlay, ResolvedDrive } from '../lib/types'
-import { createLineups, defaultLineupSlot, findLineup, lineupId, resolveDrive, resolveDrives } from '../lib/lineups'
+import { createLineup, createLineups, defaultLineupSlot, findLineup, lineupId, resolveDrive, resolveDrives } from '../lib/lineups'
 
 function assignedIds(assignments: Record<string, string | null>) {
   return Object.values(assignments).filter(Boolean)
@@ -530,39 +531,57 @@ assert.equal(resolveDrive(firstOffense, initialAppState.lineups).assignments.QB,
 const secondOffense = initialAppState.drives.filter((drive) => drive.unit === 'offense')[1]
 assert.equal(assignedIds(resolveDrive(secondOffense, initialAppState.lineups).assignments).length, 0)
 
-// ---- Rest window: the first three drives each way ----
-const restDrives = [
-  resolved(createDrive('r-off-1', 'offense', 1, 'g'), { QB: 'p-rhett', C: 'p-teddy' }),
-  resolved(createDrive('r-def-1', 'defense', 1, 'g'), { R: 'p-rhett' }),
-  resolved(createDrive('r-off-2', 'offense', 2, 'g'), { QB: 'p-teddy' }),
-  resolved(createDrive('r-def-2', 'defense', 2, 'g'), { R: 'p-teddy' }),
-  resolved(createDrive('r-off-3', 'offense', 3, 'g'), { QB: 'p-rhett' }),
-  resolved(createDrive('r-def-3', 'defense', 3, 'g'), {}),
-  // Anything past the third drive each way is outside the window.
-  resolved(createDrive('r-off-4', 'offense', 4, 'g'), { QB: 'p-rhett' }),
-  resolved(createDrive('r-def-4', 'defense', 4, 'g'), { R: 'p-rhett' })
+// ---- Rest window: the first three lineups each way ----
+const restLineup = (unit: 'offense' | 'defense', slot: number, assignments: Record<string, string | null>) => ({
+  ...createLineup(unit, slot, 'team-dolphins'),
+  assignments: { ...createEmptyAssignments(unit), ...assignments }
+})
+const restLineups = [
+  restLineup('offense', 1, { QB: 'p-rhett', C: 'p-teddy' }),
+  restLineup('defense', 1, { R: 'p-rhett' }),
+  restLineup('offense', 2, { QB: 'p-teddy' }),
+  restLineup('defense', 2, { R: 'p-teddy' }),
+  restLineup('offense', 3, { QB: 'p-rhett' }),
+  restLineup('defense', 3, {}),
+  // Anything past the third lineup each way is outside the window.
+  restLineup('offense', 4, { QB: 'p-rhett' }),
+  restLineup('defense', 4, { R: 'p-rhett' })
 ]
 
-assert.equal(getRestWindowDrives(restDrives).length, 6)
-assert.deepEqual(getRestWindowDrives(restDrives).map((drive) => drive.id), [
-  'r-off-1',
-  'r-off-2',
-  'r-off-3',
-  'r-def-1',
-  'r-def-2',
-  'r-def-3'
+// The table reads across in the order the lineups get used.
+assert.deepEqual(orderedLineups(restLineups).map((lineup) => `${lineup.unit[0]}${lineup.slot}`), [
+  'o1',
+  'd1',
+  'o2',
+  'd2',
+  'o3',
+  'd3',
+  'o4',
+  'd4'
+])
+assert.equal(getRestWindowLineups(restLineups).length, 6)
+assert.deepEqual(getRestWindowLineups(restLineups).map((lineup) => lineup.id), [
+  lineupId('offense', 1),
+  lineupId('defense', 1),
+  lineupId('offense', 2),
+  lineupId('defense', 2),
+  lineupId('offense', 3),
+  lineupId('defense', 3)
 ])
 // Rhett plays OFF 1, DEF 1 and OFF 3 inside the window, so he sits three.
-assert.equal(countSitOuts('p-rhett', restDrives), 3)
+assert.equal(countSitOuts('p-rhett', restLineups), 3)
 // Teddy plays OFF 1, OFF 2 and DEF 2.
-assert.equal(countSitOuts('p-teddy', restDrives), 3)
+assert.equal(countSitOuts('p-teddy', restLineups), 3)
 // Someone who never plays sits all six.
-assert.equal(countSitOuts('p-henry', restDrives), 6)
-// Drives beyond the window do not lower the count.
-assert.equal(countSitOuts('p-rhett', restDrives.slice(0, 6)), 3)
-// A short game counts only the drives that exist.
-assert.equal(getRestWindowDrives(restDrives.slice(0, 2)).length, 2)
-assert.equal(countSitOuts('p-rhett', restDrives.slice(0, 2)), 0)
+assert.equal(countSitOuts('p-henry', restLineups), 6)
+// Lineups beyond the window do not lower the count.
+assert.equal(countSitOuts('p-rhett', restLineups.slice(0, 6)), 3)
+// Playing time follows the lineup, whatever drive happens to call it.
+assert.equal(countSitOuts('p-grady', restLineups), 6)
+assert.equal(
+  countSitOuts('p-grady', restLineups.map((lineup) => (lineup.id === lineupId('defense', 2) ? restLineup('defense', 2, { LE: 'p-grady' }) : lineup))),
+  5
+)
 
 // ---- Snapping ----
 // Nothing nearby: fall back to the grid, which is square on a field twice as wide.

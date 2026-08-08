@@ -194,6 +194,8 @@ export interface AppState {
   practiceTemplates: PracticeTemplate[]
   plays: PlaybookPlay[]
   formations: Formation[]
+  /** Which seeded playbook this state has already taken. */
+  playbookSeed: string
   lineups: Lineup[]
   slotPositions: SlotPositions
   appSettings: AppSettings

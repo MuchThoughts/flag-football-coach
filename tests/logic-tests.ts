@@ -310,9 +310,9 @@ assert.deepEqual(getFormationPosition('3', trips), { x: 90, y: 72 })
 assert.deepEqual(getFormationPosition('QB', { ...trips, positions: {} }), { x: 50, y: 72 })
 
 const catalog: PlaybookPlay[] = [
-  { ...initialAppState.plays[0], id: 'p1', name: 'Sweep Right', type: 'run' as const, area: 'sidelines' as const, formationId: 'formation-balanced', notes: 'edge crashes' },
-  { ...initialAppState.plays[0], id: 'p2', name: 'Post Wheel', type: 'pass' as const, area: 'deep' as const, formationId: 'formation-trips-right', notes: '' },
-  { ...initialAppState.plays[0], id: 'p3', name: 'Dive', type: 'run' as const, area: 'middle' as const, formationId: 'formation-balanced', notes: '' }
+  { ...initialAppState.plays[0], id: 'p1', name: 'Sweep Right', type: 'run' as const, area: 'sidelines' as const, formationId: 'formation-phins-base', notes: 'edge crashes' },
+  { ...initialAppState.plays[0], id: 'p2', name: 'Post Wheel', type: 'pass' as const, area: 'deep' as const, formationId: 'formation-phins-trips-right', notes: '' },
+  { ...initialAppState.plays[0], id: 'p3', name: 'Dive', type: 'run' as const, area: 'middle' as const, formationId: 'formation-phins-base', notes: '' }
 ]
 const ids = (result: PlaybookPlay[]) => result.map((play) => play.id).join(',')
 
@@ -320,7 +320,7 @@ assert.equal(ids(filterPlays(catalog, initialAppState.formations, emptyPlayFilte
 assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, type: 'run' })), 'p1,p3')
 assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, area: 'deep' })), 'p2')
 assert.equal(
-  ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, formationId: 'formation-balanced' })),
+  ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, formationId: 'formation-phins-base' })),
   'p1,p3'
 )
 // Search covers name, notes and the formation name.
@@ -332,7 +332,7 @@ assert.equal(
   'p1'
 )
 assert.equal(ids(filterPlays(catalog, initialAppState.formations, { ...emptyPlayFilters, search: 'nothing here' })), '')
-assert.equal(countPlaysByFormation(catalog, 'formation-balanced'), 2)
+assert.equal(countPlaysByFormation(catalog, 'formation-phins-base'), 2)
 
 // Plays saved with a free-text formation and tags become real formations.
 const legacyPlaybook = migrateAppState({
@@ -380,6 +380,7 @@ assert.deepEqual(stablePlaybook.formations.map((f) => f.id), initialAppState.for
 
 // ---- The seeded Phins playbook ----
 const seeded = phinsPlaybook('team-dolphins')
+assert.equal(seeded.formations.every((formation) => formation.id.startsWith('formation-phins-')), true)
 assert.deepEqual(seeded.formations.map((formation) => formation.name), [
   'Base',
   'Twins',
@@ -426,31 +427,69 @@ assert.deepEqual([seededPlay('Bootleg Pass').type, seededPlay('Bootleg Pass').ar
 assert.deepEqual([seededPlay('Fake Dive Explosion WR Ins').type, seededPlay('Fake Dive Explosion WR Ins').area], ['pass', 'deep'])
 assert.equal(seededPlay('2 / 3 Screen').routes.some((route) => route.style === 'dashed'), true)
 
-// A saved state still carrying the two demo plays picks the real playbook up.
-const demoPlaybook = migrateAppState({
-  ...initialAppState,
-  plays: [
-    { id: 'play-1', teamId: 'team-wildcats', name: 'Sweep Right', formationId: 'formation-balanced', type: 'run', area: 'sidelines', notes: '', routes: [], footballs: [] }
-  ],
-  formations: [
-    { id: 'formation-balanced', teamId: 'team-wildcats', name: 'Balanced', positions: defaultFormationPositions() }
-  ]
-} as unknown as typeof initialAppState)
+const demoPlay = (id: string, name: string, formationId: string) => ({
+  id,
+  teamId: 'team-wildcats',
+  name,
+  formationId,
+  type: 'run',
+  area: 'sidelines',
+  notes: '',
+  routes: [],
+  footballs: []
+})
+const demoFormation = (id: string, name: string) => ({
+  id,
+  teamId: 'team-wildcats',
+  name,
+  positions: defaultFormationPositions()
+})
+const seedInto = (plays: unknown[], formations: unknown[]) =>
+  migrateAppState({
+    ...initialAppState,
+    playbookSeed: undefined,
+    plays,
+    formations
+  } as unknown as typeof initialAppState)
+
+// A saved state still carrying the demo playbook picks the real one up.
+const demoPlaybook = seedInto(
+  [demoPlay('play-1', 'Sweep Right', 'formation-balanced')],
+  [demoFormation('formation-balanced', 'Balanced')]
+)
 assert.equal(demoPlaybook.formations.length, 9)
 assert.equal(demoPlaybook.plays.length, 107)
 assert.equal(demoPlaybook.plays.every((play) => play.teamId === demoPlaybook.team.id), true)
 
-// A playbook the coach has written in is never replaced.
-const coachPlaybook = migrateAppState({
-  ...initialAppState,
-  plays: [
-    { id: 'play-mine', teamId: 'team-wildcats', name: 'Wildcat Left', formationId: 'formation-balanced', type: 'run', area: 'sidelines', notes: '', routes: [], footballs: [] }
-  ],
-  formations: [
-    { id: 'formation-balanced', teamId: 'team-wildcats', name: 'Balanced', positions: defaultFormationPositions() }
-  ]
-} as unknown as typeof initialAppState)
-assert.deepEqual(coachPlaybook.plays.map((play) => play.id), ['play-mine'])
+// Plays the coach wrote are kept, and the playbook is added alongside them.
+const coachPlaybook = seedInto(
+  [demoPlay('play-1', 'Sweep Right', 'formation-balanced'), demoPlay('play-mine', 'Wildcat Left', 'formation-mine')],
+  [demoFormation('formation-balanced', 'Balanced'), demoFormation('formation-mine', 'My Set')]
+)
+assert.equal(coachPlaybook.plays.length, 108)
+assert.equal(coachPlaybook.plays.some((play) => play.id === 'play-mine'), true)
+// The demo plays go, and the demo formation with them once nothing points at it.
+assert.equal(coachPlaybook.plays.some((play) => play.id === 'play-1'), false)
+assert.deepEqual(
+  coachPlaybook.formations.filter((formation) => !formation.id.startsWith('formation-phins-')).map((f) => f.id),
+  ['formation-mine']
+)
+
+// A demo formation one of the coach's plays still points at is left in place.
+const referencedDemo = seedInto(
+  [demoPlay('play-mine', 'Wildcat Left', 'formation-balanced')],
+  [demoFormation('formation-balanced', 'Balanced')]
+)
+assert.equal(referencedDemo.formations.length, 10)
+assert.equal(referencedDemo.formations.some((formation) => formation.id === 'formation-balanced'), true)
+
+// Seeding happens once: plays deleted afterwards stay deleted.
+const afterDeleting = migrateAppState({
+  ...demoPlaybook,
+  plays: demoPlaybook.plays.slice(0, 5)
+})
+assert.equal(afterDeleting.plays.length, 5)
+assert.equal(afterDeleting.playbookSeed, demoPlaybook.playbookSeed)
 
 // ---- Lineups ----
 assert.equal(lineups.length, 8)

@@ -70,8 +70,13 @@ const formationSpecs: FormationSpec[] = [
   }
 ]
 
+/** Prefixed so a seeded formation can never collide with one already saved. */
+function formationId(specId: string) {
+  return specId.replace('formation-', 'formation-phins-')
+}
+
 const baseFormations: Formation[] = formationSpecs.map((spec) => ({
-  id: spec.id,
+  id: formationId(spec.id),
   teamId: '',
   name: spec.name,
   positions: positions(spec.spots),
@@ -468,9 +473,10 @@ function toSpots(formation: Formation): Record<string, FieldPoint> {
   }, {})
 }
 
-const basePlays: PlaybookPlay[] = baseFormations.flatMap((formation) => {
+const basePlays: PlaybookPlay[] = formationSpecs.flatMap((spec) => {
+  const formation = baseFormations.find((item) => item.id === formationId(spec.id))!
   const spots = toSpots(formation)
-  return (playsByFormation[formation.id] || []).map((name, index) => {
+  return (playsByFormation[spec.id] || []).map((name, index) => {
     const drawn = drawPlay(name, spots)
     return {
       id: `play-${formation.id.replace('formation-', '')}-${index + 1}`,
@@ -488,7 +494,8 @@ const basePlays: PlaybookPlay[] = baseFormations.flatMap((formation) => {
   })
 })
 
-export const phinsFormationIds = baseFormations.map((formation) => formation.id)
+/** Bumped when the seeded playbook changes, so saved states pick the change up. */
+export const PHINS_PLAYBOOK_SEED = 'phins-1'
 
 /** The starting playbook: the sheet's formations and the plays run off them. */
 export function phinsPlaybook(teamId: string): { formations: Formation[]; plays: PlaybookPlay[] } {

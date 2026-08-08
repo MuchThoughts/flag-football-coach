@@ -141,6 +141,7 @@ export default function CoachApp() {
   const [practiceTemplates, setPracticeTemplates] = useState(initialAppState.practiceTemplates)
   const [plays, setPlays] = useState(initialAppState.plays)
   const [formations, setFormations] = useState(initialAppState.formations)
+  const [playbookSeed, setPlaybookSeed] = useState(initialAppState.playbookSeed)
   const [lineups, setLineups] = useState(initialAppState.lineups)
   const [slotPositions, setSlotPositions] = useState(initialAppState.slotPositions)
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppState.appSettings)
@@ -233,6 +234,7 @@ export default function CoachApp() {
       practiceTemplates,
       plays,
       formations,
+      playbookSeed,
       lineups,
       slotPositions,
       appSettings
@@ -252,6 +254,7 @@ export default function CoachApp() {
     setPracticeTemplates(saved.practiceTemplates)
     setPlays(saved.plays)
     setFormations(saved.formations)
+    setPlaybookSeed(saved.playbookSeed)
     setLineups(saved.lineups)
     setSlotPositions(saved.slotPositions)
     setAppSettings(membership ? appSettingsFromMembership(membership, saved.appSettings) : saved.appSettings)
@@ -364,7 +367,7 @@ export default function CoachApp() {
           setSyncMessage(error instanceof Error ? error.message : 'Cloud save failed')
         })
     }, 700)
-  }, [appSettings, availabilityByGame, drives, formations, games, lineups, loaded, players, plays, practiceTemplates, practices, selectedDriveId, selectedGameId, slotPositions, team])
+  }, [appSettings, availabilityByGame, drives, formations, games, lineups, loaded, players, plays, practiceTemplates, practices, playbookSeed, selectedDriveId, selectedGameId, slotPositions, team])
 
   useEffect(() => {
     if (!syncReady || !syncTeamId || !syncUserId) return

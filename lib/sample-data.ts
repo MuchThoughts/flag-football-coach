@@ -1,6 +1,6 @@
 import type { AppState, Drive, DriveNote, Lineup, Player, Unit } from './types'
 import { createLineups, defaultLineupSlot, lineupId } from './lineups'
-import { phinsPlaybook } from './phins-playbook'
+import { PHINS_PLAYBOOK_SEED, phinsPlaybook } from './phins-playbook'
 
 const teamId = 'team-wildcats'
 const gameId = 'game-1'
@@ -155,6 +155,7 @@ export const initialAppState: AppState = {
   ],
   plays: seedPlaybook.plays,
   formations: seedPlaybook.formations,
+  playbookSeed: PHINS_PLAYBOOK_SEED,
   lineups: sampleLineups,
   slotPositions: {},
   appSettings: {

@@ -13,7 +13,7 @@ import type {
 } from './types'
 import { LINEUPS_PER_UNIT } from './types'
 import { createLineups, defaultLineupSlot, lineupId } from './lineups'
-import { phinsPlaybook } from './phins-playbook'
+import { PHINS_PLAYBOOK_SEED, phinsPlaybook } from './phins-playbook'
 import { defaultFormationPositions } from './playbook'
 import { initialAppState, samplePlayers } from './sample-data'
 
@@ -300,20 +300,37 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
 const legacySamplePlayIds = ['play-1', 'play-2']
 const legacySampleFormationIds = ['formation-balanced', 'formation-trips-right']
 
-/** Nothing in the playbook but the two demo plays the app used to ship with. */
-function playbookIsDemo(plays: PlaybookPlay[], formations: Formation[]) {
-  return (
-    plays.every((play) => legacySamplePlayIds.includes(play.id)) &&
-    formations.every((formation) => legacySampleFormationIds.includes(formation.id))
-  )
-}
-
 /**
- * The real formations and play list replace the demo playbook the first time a
- * saved state is opened. A coach who has already written plays keeps theirs.
+ * The real formations and play list are added the first time a saved state is
+ * opened, alongside whatever the coach has already written. The demo plays the
+ * app used to ship with are dropped, and the demo formations with them unless a
+ * play the coach kept still points at one.
+ *
+ * A marker on the state records that this has happened, so plays deleted later
+ * stay deleted instead of coming back on the next load.
  */
-function seedPhinsPlaybook(plays: PlaybookPlay[], formations: Formation[], teamId: string) {
-  return playbookIsDemo(plays, formations) ? phinsPlaybook(teamId) : { plays, formations }
+function seedPhinsPlaybook(state: AppState): AppState {
+  if (state.playbookSeed === PHINS_PLAYBOOK_SEED) {
+    return state
+  }
+
+  const seed = phinsPlaybook(state.team.id)
+  const kept = state.plays.filter((play) => !legacySamplePlayIds.includes(play.id))
+  const keptFormations = state.formations.filter(
+    (formation) =>
+      !legacySampleFormationIds.includes(formation.id) ||
+      kept.some((play) => play.formationId === formation.id)
+  )
+
+  return {
+    ...state,
+    plays: [...seed.plays.filter((play) => !kept.some((item) => item.id === play.id)), ...kept],
+    formations: [
+      ...seed.formations.filter((formation) => !keptFormations.some((item) => item.id === formation.id)),
+      ...keptFormations
+    ],
+    playbookSeed: PHINS_PLAYBOOK_SEED
+  }
 }
 
 /**
@@ -341,6 +358,7 @@ export function migrateAppState(saved: AppState): AppState {
         plays: saved.plays || [],
         formations: saved.formations || [],
         lineups: saved.lineups || [],
+        playbookSeed: saved.playbookSeed || '',
         slotPositions: saved.slotPositions || {},
         appSettings: saved.appSettings || initialAppState.appSettings
       })
@@ -348,12 +366,7 @@ export function migrateAppState(saved: AppState): AppState {
   )
 
   const migrated = migratePlaybook(state)
-  const playbook = seedPhinsPlaybook(migrated.plays, migrated.formations, state.team.id)
+  const seeded = seedPhinsPlaybook({ ...state, plays: migrated.plays, formations: migrated.formations })
 
-  return {
-    ...state,
-    players: state.players.map(normalizePlayer),
-    plays: playbook.plays,
-    formations: playbook.formations
-  }
+  return { ...seeded, players: seeded.players.map(normalizePlayer) }
 }

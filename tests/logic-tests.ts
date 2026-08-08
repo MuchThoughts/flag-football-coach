@@ -10,6 +10,7 @@ import {
 } from '../lib/fair-play'
 import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
+import { phinsPlaybook } from '../lib/phins-playbook'
 import {
   countPlaysByFormation,
   defaultFormationPositions,
@@ -296,7 +297,7 @@ const namedGame = migrateAppState({
 assert.equal(namedGame.games[0].name, 'Season Opener')
 
 // ---- Playbook ----
-assert.equal(initialAppState.formations.length, 2)
+assert.equal(initialAppState.formations.length, 9)
 assert.equal(
   initialAppState.plays.every((play) => initialAppState.formations.some((formation) => formation.id === play.formationId)),
   true
@@ -304,7 +305,7 @@ assert.equal(
 assert.deepEqual(Object.keys(defaultFormationPositions()).sort(), ['1', '2', '3', '4', 'C', 'QB', 'RB'])
 
 const trips = initialAppState.formations.find((formation) => formation.name === 'Trips Right')!
-assert.deepEqual(getFormationPosition('3', trips), { x: 76, y: 52 })
+assert.deepEqual(getFormationPosition('3', trips), { x: 90, y: 72 })
 // A position the formation does not place falls back to its default spot.
 assert.deepEqual(getFormationPosition('QB', { ...trips, positions: {} }), { x: 50, y: 72 })
 
@@ -370,20 +371,86 @@ const predrawing = migrateAppState({
 } as unknown as typeof initialAppState)
 assert.deepEqual(predrawing.plays[0].routes, [])
 assert.deepEqual(predrawing.plays[0].footballs, [])
-assert.equal(predrawing.plays[0].name, 'Sweep Right')
-
-// Seeded plays ship with a drawing, including a dashed pass and a handoff.
-assert.equal(initialAppState.plays[0].footballs.length, 1)
-assert.equal(initialAppState.plays[1].routes.some((route) => route.style === 'dashed'), true)
-assert.equal(
-  initialAppState.plays.every((play) => play.routes.every((route) => route.points.length >= 2)),
-  true
-)
+assert.equal(predrawing.plays[0].name, initialAppState.plays[0].name)
 
 // Already-migrated playbooks are left alone.
 const stablePlaybook = migrateAppState(initialAppState)
 assert.deepEqual(stablePlaybook.plays.map((play) => play.id), initialAppState.plays.map((play) => play.id))
 assert.deepEqual(stablePlaybook.formations.map((f) => f.id), initialAppState.formations.map((f) => f.id))
+
+// ---- The seeded Phins playbook ----
+const seeded = phinsPlaybook('team-dolphins')
+assert.deepEqual(seeded.formations.map((formation) => formation.name), [
+  'Base',
+  'Twins',
+  'Bunch',
+  'Trips Right',
+  'Trips Left',
+  'Empty Left',
+  'Empty Right',
+  'Splitback Twins Right',
+  'Splitback Twins Left'
+])
+assert.equal(seeded.plays.length, 107)
+assert.equal(new Set(seeded.plays.map((play) => play.id)).size, seeded.plays.length)
+assert.equal([...seeded.formations, ...seeded.plays].every((item) => item.teamId === 'team-dolphins'), true)
+
+// Every formation places all seven spots, on the field and clear of each other.
+seeded.formations.forEach((formation) => {
+  const codes = Object.keys(formation.positions)
+  assert.deepEqual(codes.sort(), ['1', '2', '3', '4', 'C', 'QB', 'RB'])
+  codes.forEach((code, index) => {
+    const spot = formation.positions[code]
+    assert.equal(spot.x >= 0 && spot.x <= 100 && spot.y >= 0 && spot.y <= 100, true)
+    codes.slice(index + 1).forEach((other) => {
+      const against = formation.positions[other]
+      // The playbook field is twice as wide as it is tall, so x counts double.
+      const gap = Math.hypot((spot.x - against.x) * 2, spot.y - against.y)
+      assert.equal(gap >= 16, true, `${formation.name} ${code}/${other} only ${gap.toFixed(1)} apart`)
+    })
+  })
+})
+
+// Every play belongs to a formation and opens with something drawn on it.
+assert.equal(seeded.plays.every((play) => seeded.formations.some((formation) => formation.id === play.formationId)), true)
+assert.equal(seeded.plays.every((play) => play.routes.length > 0), true)
+assert.equal(seeded.plays.every((play) => play.routes.every((route) => route.points.length >= 2)), true)
+
+const seededPlay = (name: string) => seeded.plays.find((play) => play.name === name)!
+// A handoff drops a football; a pass concept draws a dashed line.
+assert.equal(seededPlay('HB Dive').footballs.length, 1)
+assert.deepEqual([seededPlay('HB Dive').type, seededPlay('HB Dive').area], ['run', 'middle'])
+assert.deepEqual([seededPlay('2 / 3 Sweep').type, seededPlay('2 / 3 Sweep').area], ['run', 'sidelines'])
+assert.deepEqual([seededPlay('Crossing Route').type, seededPlay('Crossing Route').area], ['pass', 'middle'])
+assert.deepEqual([seededPlay('Bootleg Pass').type, seededPlay('Bootleg Pass').area], ['pass', 'sidelines'])
+assert.deepEqual([seededPlay('Fake Dive Explosion WR Ins').type, seededPlay('Fake Dive Explosion WR Ins').area], ['pass', 'deep'])
+assert.equal(seededPlay('2 / 3 Screen').routes.some((route) => route.style === 'dashed'), true)
+
+// A saved state still carrying the two demo plays picks the real playbook up.
+const demoPlaybook = migrateAppState({
+  ...initialAppState,
+  plays: [
+    { id: 'play-1', teamId: 'team-wildcats', name: 'Sweep Right', formationId: 'formation-balanced', type: 'run', area: 'sidelines', notes: '', routes: [], footballs: [] }
+  ],
+  formations: [
+    { id: 'formation-balanced', teamId: 'team-wildcats', name: 'Balanced', positions: defaultFormationPositions() }
+  ]
+} as unknown as typeof initialAppState)
+assert.equal(demoPlaybook.formations.length, 9)
+assert.equal(demoPlaybook.plays.length, 107)
+assert.equal(demoPlaybook.plays.every((play) => play.teamId === demoPlaybook.team.id), true)
+
+// A playbook the coach has written in is never replaced.
+const coachPlaybook = migrateAppState({
+  ...initialAppState,
+  plays: [
+    { id: 'play-mine', teamId: 'team-wildcats', name: 'Wildcat Left', formationId: 'formation-balanced', type: 'run', area: 'sidelines', notes: '', routes: [], footballs: [] }
+  ],
+  formations: [
+    { id: 'formation-balanced', teamId: 'team-wildcats', name: 'Balanced', positions: defaultFormationPositions() }
+  ]
+} as unknown as typeof initialAppState)
+assert.deepEqual(coachPlaybook.plays.map((play) => play.id), ['play-mine'])
 
 // ---- Lineups ----
 assert.equal(lineups.length, 8)

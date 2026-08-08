@@ -1,10 +1,10 @@
 import type { AppState, Drive, DriveNote, Lineup, Player, Unit } from './types'
 import { createLineups, defaultLineupSlot, lineupId } from './lineups'
-import { defaultFormationPositions } from './playbook'
+import { phinsPlaybook } from './phins-playbook'
 
 const teamId = 'team-wildcats'
 const gameId = 'game-1'
-const seedTimestamp = '2026-09-01T00:00:00.000Z'
+const seedPlaybook = phinsPlaybook(teamId)
 
 const emptyNote = (): DriveNote => ({
   whatWorked: '',
@@ -153,63 +153,8 @@ export const initialAppState: AppState = {
       updatedAt: '2026-09-01T00:00:00.000Z'
     }
   ],
-  plays: [
-    {
-      id: 'play-1',
-      teamId,
-      name: 'Sweep Right',
-      formationId: 'formation-balanced',
-      type: 'run',
-      area: 'sidelines',
-      notes: 'RB motion right, 3 clears, 4 stalks space. Good early-down call when the edge defender crashes.',
-      routes: [
-        { id: 'route-sweep-rb', points: [{ x: 36, y: 80 }, { x: 54, y: 74 }, { x: 70, y: 64 }, { x: 80, y: 54 }], style: 'solid' },
-        { id: 'route-sweep-3', points: [{ x: 73, y: 52 }, { x: 75, y: 28 }], style: 'solid' }
-      ],
-      footballs: [{ id: 'ball-sweep', x: 44, y: 76 }],
-      createdAt: seedTimestamp,
-      updatedAt: seedTimestamp
-    },
-    {
-      id: 'play-2',
-      teamId,
-      name: 'Slot Cross',
-      formationId: 'formation-trips-right',
-      type: 'pass',
-      area: 'middle',
-      notes: '2 shallow, 3 dig, 4 clear, RB check release. Use when the QB has time and the middle is open.',
-      routes: [
-        { id: 'route-cross-2', points: [{ x: 62, y: 52 }, { x: 48, y: 38 }, { x: 32, y: 34 }], style: 'solid' },
-        { id: 'route-cross-qb', points: [{ x: 50, y: 72 }, { x: 36, y: 36 }], style: 'dashed' }
-      ],
-      footballs: [],
-      createdAt: seedTimestamp,
-      updatedAt: seedTimestamp
-    }
-  ],
-  formations: [
-    {
-      id: 'formation-balanced',
-      teamId,
-      name: 'Balanced',
-      positions: defaultFormationPositions(),
-      createdAt: seedTimestamp,
-      updatedAt: seedTimestamp
-    },
-    {
-      id: 'formation-trips-right',
-      teamId,
-      name: 'Trips Right',
-      positions: {
-        ...defaultFormationPositions(),
-        '2': { x: 62, y: 52 },
-        '3': { x: 76, y: 52 },
-        '4': { x: 92, y: 52 }
-      },
-      createdAt: seedTimestamp,
-      updatedAt: seedTimestamp
-    }
-  ],
+  plays: seedPlaybook.plays,
+  formations: seedPlaybook.formations,
   lineups: sampleLineups,
   slotPositions: {},
   appSettings: {

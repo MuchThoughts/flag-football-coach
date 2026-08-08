@@ -13,6 +13,7 @@ import type {
 } from './types'
 import { LINEUPS_PER_UNIT } from './types'
 import { createLineups, defaultLineupSlot, lineupId } from './lineups'
+import { phinsPlaybook } from './phins-playbook'
 import { defaultFormationPositions } from './playbook'
 import { initialAppState, samplePlayers } from './sample-data'
 
@@ -296,6 +297,25 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
   return { plays, formations }
 }
 
+const legacySamplePlayIds = ['play-1', 'play-2']
+const legacySampleFormationIds = ['formation-balanced', 'formation-trips-right']
+
+/** Nothing in the playbook but the two demo plays the app used to ship with. */
+function playbookIsDemo(plays: PlaybookPlay[], formations: Formation[]) {
+  return (
+    plays.every((play) => legacySamplePlayIds.includes(play.id)) &&
+    formations.every((formation) => legacySampleFormationIds.includes(formation.id))
+  )
+}
+
+/**
+ * The real formations and play list replace the demo playbook the first time a
+ * saved state is opened. A coach who has already written plays keeps theirs.
+ */
+function seedPhinsPlaybook(plays: PlaybookPlay[], formations: Formation[], teamId: string) {
+  return playbookIsDemo(plays, formations) ? phinsPlaybook(teamId) : { plays, formations }
+}
+
 /**
  * Brings saved states forward: drops jersey numbers, last names and opponents,
  * and upgrades the demo roster to the real one.
@@ -327,7 +347,8 @@ export function migrateAppState(saved: AppState): AppState {
     )
   )
 
-  const playbook = migratePlaybook(state)
+  const migrated = migratePlaybook(state)
+  const playbook = seedPhinsPlaybook(migrated.plays, migrated.formations, state.team.id)
 
   return {
     ...state,

@@ -27,7 +27,14 @@ import {
   type SupabaseMembership
 } from '@/lib/supabase/app-state'
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
-import { autoFillDrive, computeUsage, getDriveWarnings, isPlayerAvailable } from '@/lib/fair-play'
+import {
+  autoFillDrive,
+  computeUsage,
+  countSitOuts,
+  getDriveWarnings,
+  getRestWindowDrives,
+  isPlayerAvailable
+} from '@/lib/fair-play'
 import { getGameSummary } from '@/lib/game-summary'
 import { migrateAppState } from '@/lib/migrate-state'
 import {
@@ -40,6 +47,7 @@ import {
   PLAYBOOK_SLOTS,
   type PlayFilters
 } from '@/lib/playbook'
+import { LINEUPS_PER_UNIT } from '@/lib/types'
 import PlaybookField from '@/components/PlaybookField'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
 import { getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
@@ -2376,11 +2384,17 @@ function PlayingTimeTable({
     return entry?.[0]
   }
 
+  // The lineups only go four deep, so anything past the fourth drive each way is noise.
+  const shownDrives = drives.filter((drive) => drive.driveNumber <= LINEUPS_PER_UNIT)
+  const restWindow = getRestWindowDrives(drives)
+
   return (
     <section className="space-y-3 border-t border-[#d8ded5] pt-4">
       <div>
         <h2 className="font-display text-xl font-black">Playing Time</h2>
-        <p className="text-sm font-bold text-[#53665c]">Who is on and who is resting, drive by drive.</p>
+        <p className="text-sm font-bold text-[#53665c]">
+          The number by each name is how many of the first {restWindow.length} drives they sit.
+        </p>
       </div>
 
       <div className="overflow-x-auto">
@@ -2388,9 +2402,9 @@ function PlayingTimeTable({
           <thead>
             <tr>
               <th className="sticky left-0 z-10 bg-[#f7f5ee] px-1 py-1 text-left text-[10px] font-black uppercase text-[#53665c]">
-                Player
+                Player · Sits
               </th>
-              {drives.map((drive) => (
+              {shownDrives.map((drive) => (
                 <th
                   key={drive.id}
                   className={`px-0.5 py-1 text-[9px] font-black uppercase ${
@@ -2406,16 +2420,27 @@ function PlayingTimeTable({
           <tbody>
             {players.map((player) => {
               const out = !isPlayerAvailable(player.id, availability)
-              const playing = out ? 0 : drives.filter((drive) => slotFor(drive, player.id)).length
+              const sits = out ? restWindow.length : countSitOuts(player.id, drives)
+              const playing = out ? 0 : shownDrives.filter((drive) => slotFor(drive, player.id)).length
               return (
                 <tr key={player.id} className={out ? 'opacity-60' : ''}>
                   <th className="sticky left-0 z-10 bg-[#f7f5ee] px-1 py-1 text-left">
-                    <span className="block truncate text-xs font-black">{player.firstName}</span>
+                    <span className="flex items-center gap-1">
+                      <span className="min-w-0 truncate text-xs font-black">{player.firstName}</span>
+                      <span
+                        aria-label={`Sits ${sits} of the first ${restWindow.length} drives`}
+                        className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-black ${
+                          sits >= 3 ? 'bg-[#c2412d] text-white' : sits === 0 ? 'bg-[#1f7a4d] text-white' : 'bg-[#d8ded5] text-[#10201a]'
+                        }`}
+                      >
+                        {sits}
+                      </span>
+                    </span>
                     <span className="block text-[9px] font-bold text-[#53665c]">
-                      {playing}/{drives.length}
+                      {playing}/{shownDrives.length} played
                     </span>
                   </th>
-                  {drives.map((drive) => {
+                  {shownDrives.map((drive) => {
                     const slotCode = out ? undefined : slotFor(drive, player.id)
                     return (
                       <td key={drive.id} className="px-0.5 py-1">

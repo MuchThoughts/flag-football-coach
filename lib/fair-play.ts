@@ -103,6 +103,27 @@ export function computeUsage(
   })
 }
 
+/** Rest is judged over the first three drives each way: the six a coach plans around. */
+export const REST_WINDOW_PER_UNIT = 3
+
+function byDriveNumber(a: ResolvedDrive, b: ResolvedDrive) {
+  return a.driveNumber - b.driveNumber
+}
+
+export function getRestWindowDrives(drives: ResolvedDrive[]): ResolvedDrive[] {
+  return [
+    ...drives.filter((drive) => drive.unit === 'offense').sort(byDriveNumber).slice(0, REST_WINDOW_PER_UNIT),
+    ...drives.filter((drive) => drive.unit === 'defense').sort(byDriveNumber).slice(0, REST_WINDOW_PER_UNIT)
+  ]
+}
+
+/** How many of those six drives a player sits out. */
+export function countSitOuts(playerId: string, drives: ResolvedDrive[]) {
+  return getRestWindowDrives(drives).filter(
+    (drive) => !Object.values(drive.assignments).includes(playerId)
+  ).length
+}
+
 export function getFairPlayWarnings(
   players: Player[],
   drives: ResolvedDrive[],

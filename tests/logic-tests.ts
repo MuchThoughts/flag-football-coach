@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import { mergeDriveNotes } from '../lib/drive-notes'
-import { autoFillDrive, computeUsage, getDriveWarnings, isSlotFillable } from '../lib/fair-play'
+import {
+  autoFillDrive,
+  computeUsage,
+  countSitOuts,
+  getDriveWarnings,
+  getRestWindowDrives,
+  isSlotFillable
+} from '../lib/fair-play'
 import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import {
@@ -404,6 +411,40 @@ assert.equal(resolveDrive(firstOffense, initialAppState.lineups).assignments.QB,
 // The seeded second and third drives take empty lineups, so nobody plays them yet.
 const secondOffense = initialAppState.drives.filter((drive) => drive.unit === 'offense')[1]
 assert.equal(assignedIds(resolveDrive(secondOffense, initialAppState.lineups).assignments).length, 0)
+
+// ---- Rest window: the first three drives each way ----
+const restDrives = [
+  resolved(createDrive('r-off-1', 'offense', 1, 'g'), { QB: 'p-rhett', C: 'p-teddy' }),
+  resolved(createDrive('r-def-1', 'defense', 1, 'g'), { R: 'p-rhett' }),
+  resolved(createDrive('r-off-2', 'offense', 2, 'g'), { QB: 'p-teddy' }),
+  resolved(createDrive('r-def-2', 'defense', 2, 'g'), { R: 'p-teddy' }),
+  resolved(createDrive('r-off-3', 'offense', 3, 'g'), { QB: 'p-rhett' }),
+  resolved(createDrive('r-def-3', 'defense', 3, 'g'), {}),
+  // Anything past the third drive each way is outside the window.
+  resolved(createDrive('r-off-4', 'offense', 4, 'g'), { QB: 'p-rhett' }),
+  resolved(createDrive('r-def-4', 'defense', 4, 'g'), { R: 'p-rhett' })
+]
+
+assert.equal(getRestWindowDrives(restDrives).length, 6)
+assert.deepEqual(getRestWindowDrives(restDrives).map((drive) => drive.id), [
+  'r-off-1',
+  'r-off-2',
+  'r-off-3',
+  'r-def-1',
+  'r-def-2',
+  'r-def-3'
+])
+// Rhett plays OFF 1, DEF 1 and OFF 3 inside the window, so he sits three.
+assert.equal(countSitOuts('p-rhett', restDrives), 3)
+// Teddy plays OFF 1, OFF 2 and DEF 2.
+assert.equal(countSitOuts('p-teddy', restDrives), 3)
+// Someone who never plays sits all six.
+assert.equal(countSitOuts('p-henry', restDrives), 6)
+// Drives beyond the window do not lower the count.
+assert.equal(countSitOuts('p-rhett', restDrives.slice(0, 6)), 3)
+// A short game counts only the drives that exist.
+assert.equal(getRestWindowDrives(restDrives.slice(0, 2)).length, 2)
+assert.equal(countSitOuts('p-rhett', restDrives.slice(0, 2)), 0)
 
 // ---- Snapping ----
 // Nothing nearby: fall back to the grid, which is square on a field twice as wide.

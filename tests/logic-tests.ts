@@ -16,6 +16,7 @@ import {
   findComponent,
   parsePlayCall,
   playCallFromSteps,
+  stepsFromPlay,
   PLAY_COMPONENTS,
   stepIsComplete,
   stepLabel
@@ -649,6 +650,9 @@ const keeperSteps = [
 ]
 assert.equal(stepLabel(keeperSteps[0]), 'Fake HB Stretch Right')
 assert.equal(playCallFromSteps(keeperSteps), 'Fake HB Stretch Right Fake 4 Sweep QB Keeper')
+// The formation opens the call, the way it gets said.
+assert.equal(playCallFromSteps(keeperSteps, 'Twins'), 'Twins Fake HB Stretch Right Fake 4 Sweep QB Keeper')
+assert.equal(playCallFromSteps([], 'Twins'), 'Twins')
 // Fakes and motion do not decide what the play is; the last real component does.
 assert.deepEqual(classifySteps(keeperSteps), { type: 'run', area: 'middle' })
 assert.deepEqual(
@@ -686,3 +690,26 @@ assert.equal(parsePlayCall('   '), null)
 // Every play in the seeded playbook opens in the builder.
 const unparsed = Array.from(new Set(phinsPlaybook('t').plays.map((play) => play.name))).filter((name) => !parsePlayCall(name))
 assert.deepEqual(unparsed, [])
+
+// Reading a play back drops the formation name it opens with.
+const twins = seeded.formations.find((formation) => formation.name === 'Twins')!
+const builtPlay = {
+  ...seeded.plays[0],
+  id: 'play-built',
+  formationId: twins.id,
+  name: 'Twins Fake HB Stretch Right QB Keeper',
+  steps: undefined
+}
+assert.deepEqual(
+  stepsFromPlay(builtPlay, seeded.formations)!.map((step) => step.componentId),
+  ['hb-stretch', 'qb-keeper']
+)
+// Saved steps are used as they are, whatever the play ended up being called.
+assert.deepEqual(stepsFromPlay({ ...builtPlay, name: 'QB Keeper', steps: keeperSteps }, seeded.formations), keeperSteps)
+// A seeded play carries no formation name, and still reads back.
+assert.equal(
+  Boolean(stepsFromPlay(seeded.plays.find((play) => play.name === 'HB Dive')!, seeded.formations)),
+  true
+)
+// A name the builder cannot say has no components behind it.
+assert.equal(stepsFromPlay({ ...builtPlay, name: 'Twins Statue Of Liberty' }, seeded.formations), null)

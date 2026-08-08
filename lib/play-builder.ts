@@ -1,4 +1,4 @@
-import type { PlayArea, PlayStep, PlayType } from './types'
+import type { Formation, PlayArea, PlaybookPlay, PlayStep, PlayType } from './types'
 
 /**
  * A play is written as a sequence of components rather than drawn: pick the
@@ -120,9 +120,12 @@ export function stepLabel(step: PlayStep): string {
   return words.filter(Boolean).join(' ')
 }
 
-/** The whole play read out in order, which is also its default name. */
-export function playCallFromSteps(steps: PlayStep[]): string {
-  return steps.map(stepLabel).filter(Boolean).join(' ')
+/**
+ * The whole play read out in order — formation first, the way it gets called —
+ * which is also its default name.
+ */
+export function playCallFromSteps(steps: PlayStep[], formationName?: string): string {
+  return [formationName || '', ...steps.map(stepLabel)].filter(Boolean).join(' ')
 }
 
 /**
@@ -236,6 +239,25 @@ export function parsePlayCall(call: string): PlayStep[] | null {
   }
 
   return steps.length > 0 ? steps : null
+}
+
+/**
+ * The components behind a play, whether it was written in the builder or is
+ * being read back from its name. A leading formation name is part of the call,
+ * not part of the play, so it comes off first.
+ */
+export function stepsFromPlay(play: PlaybookPlay, formations: Formation[]): PlayStep[] | null {
+  if (play.steps && play.steps.length > 0) {
+    return play.steps
+  }
+
+  const formationName = formations.find((item) => item.id === play.formationId)?.name || ''
+  const call =
+    formationName && play.name.toLowerCase().startsWith(formationName.toLowerCase())
+      ? play.name.slice(formationName.length)
+      : play.name
+
+  return parsePlayCall(call)
 }
 
 /** True when the step still needs a receiver picked before it reads properly. */

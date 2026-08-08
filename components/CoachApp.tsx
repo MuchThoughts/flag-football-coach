@@ -52,11 +52,11 @@ import {
   COMPONENT_GROUPS,
   componentsInGroup,
   findComponent,
-  parsePlayCall,
   playCallFromSteps,
   RECEIVER_CODES,
   stepIsComplete,
   stepLabel,
+  stepsFromPlay,
   type ComponentGroup
 } from '@/lib/play-builder'
 import { LINEUPS_PER_UNIT } from '@/lib/types'
@@ -1374,10 +1374,10 @@ function PlayBuilderPage({
   const [group, setGroup] = useState<ComponentGroup>('backfield')
 
   const formation = formations.find((item) => item.id === formationId)
-  const call = playCallFromSteps(steps)
+  const call = playCallFromSteps(steps, formation?.name)
   const { type, area } = classifySteps(steps)
   // Anything the builder can say, whether it was written here or drawn earlier.
-  const builtPlays = plays.filter((play) => (play.steps && play.steps.length > 0) || parsePlayCall(play.name))
+  const builtPlays = plays.filter((play) => stepsFromPlay(play, formations))
   const incomplete = steps.some((step) => !stepIsComplete(step))
   const displayName = nameEdited ? name : call
 
@@ -1411,12 +1411,12 @@ function PlayBuilderPage({
   }
 
   function openPlay(play: PlaybookPlay) {
-    const opened = play.steps && play.steps.length > 0 ? play.steps : parsePlayCall(play.name) || []
+    const opened = stepsFromPlay(play, formations) || []
     setPlayId(play.id)
     setFormationId(play.formationId)
     setSteps(opened)
     setName(play.name)
-    setNameEdited(play.name !== playCallFromSteps(opened))
+    setNameEdited(play.name !== playCallFromSteps(opened, formations.find((item) => item.id === play.formationId)?.name))
     setNotes(play.notes)
     setGroup('backfield')
     window.scrollTo({ top: 0 })
@@ -1730,7 +1730,12 @@ function BuiltPlayList({
 }) {
   const [search, setSearch] = useState('')
   const term = search.trim().toLowerCase()
-  const visible = plays.filter((play) => !term || play.name.toLowerCase().includes(term))
+  const visible = plays.filter((play) => {
+    if (!term) return true
+    const formationName = formations.find((item) => item.id === play.formationId)?.name
+    const call = playCallFromSteps(stepsFromPlay(play, formations) || [], formationName)
+    return `${play.name} ${call}`.toLowerCase().includes(term)
+  })
 
   return (
     <section className="space-y-2">
@@ -1749,25 +1754,30 @@ function BuiltPlayList({
           No plays match that.
         </p>
       )}
-      {visible.map((play) => (
-        <button
-          key={play.id}
-          type="button"
-          onClick={() => onOpen(play)}
-          className="w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
-        >
-          <div className="flex items-center justify-between gap-2">
-            <span className="truncate font-black">{play.name}</span>
-            <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
-              {play.type}
-            </span>
-          </div>
-          <p className="mt-1 text-sm font-bold text-[#53665c]">{playCallFromSteps(play.steps || [])}</p>
-          <p className="mt-1 text-xs font-black uppercase text-[#53665c]">
-            {formations.find((item) => item.id === play.formationId)?.name || 'No formation'} · {play.area}
-          </p>
-        </button>
-      ))}
+      {visible.map((play) => {
+        const formationName = formations.find((item) => item.id === play.formationId)?.name
+        const call = playCallFromSteps(stepsFromPlay(play, formations) || [], formationName)
+        return (
+          <button
+            key={play.id}
+            type="button"
+            onClick={() => onOpen(play)}
+            className="w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="truncate font-black">{play.name}</span>
+              <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
+                {play.type}
+              </span>
+            </div>
+            {/* The call is only worth repeating when the play goes by another name. */}
+            {call !== play.name && <p className="mt-1 text-sm font-bold text-[#53665c]">{call}</p>}
+            <p className="mt-1 text-xs font-black uppercase text-[#53665c]">
+              {formationName || 'No formation'} · {play.area}
+            </p>
+          </button>
+        )
+      })}
     </section>
   )
 }

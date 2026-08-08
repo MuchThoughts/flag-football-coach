@@ -17,7 +17,7 @@ export const OFFENSE_SLOTS: FieldSlot[] = [
   { code: '3', name: '3', shortName: '3', unit: 'offense', ratingKey: 'WR', x: 72, y: 52 },
   { code: '4', name: '4', shortName: '4', unit: 'offense', ratingKey: 'WR', x: 92, y: 52 },
   { code: 'QB', name: 'Quarterback', shortName: 'QB', unit: 'offense', ratingKey: 'QB', x: 50, y: 72 },
-  { code: 'RB', name: 'Running Back', shortName: 'RB', unit: 'offense', ratingKey: 'RB', x: 36, y: 80 }
+  { code: 'RB', name: 'Running Back', shortName: 'RB', unit: 'offense', ratingKey: 'RB', x: 30, y: 84 }
 ]
 
 export const DEFENSE_SLOTS: FieldSlot[] = [

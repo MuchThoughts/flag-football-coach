@@ -2888,7 +2888,7 @@ function FormationBoard({
   compact?: boolean
 }) {
   const slots = SLOTS_BY_UNIT[lineup.unit]
-  const markerSize = compact ? 'h-[34px] w-[34px]' : 'h-[38px] w-[38px]'
+  const markerSize = compact ? 'h-[51px] w-[51px]' : 'h-[57px] w-[57px]'
 
   const fieldRef = useRef<HTMLDivElement | null>(null)
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
@@ -3011,7 +3011,7 @@ function FormationBoard({
     <div className="relative">
       <div
         ref={fieldRef}
-        className="field-yardlines relative mt-3 aspect-[2/1] w-full touch-pan-y overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field"
+        className="field-yardlines relative mt-3 aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field"
         onPointerDown={handleFieldPointerDown}
         onPointerMove={handleFieldPointerMove}
         onPointerUp={handleFieldPointerUp}
@@ -3083,18 +3083,18 @@ function FormationBoard({
                         : 'border-dashed border-[#f6f2df] bg-white/20 text-white'
                   } ${interactive ? 'cursor-pointer' : 'cursor-default'} ${isDragging ? 'scale-110 shadow-lg ring-2 ring-[#f7c948]' : ''}`}
                 >
-                  <span className={`text-[7px] font-black uppercase leading-none ${isOut ? 'text-white/80' : 'text-[#53665c]'}`}>
+                  <span className={`text-[10px] font-black uppercase leading-none ${isOut ? 'text-white/80' : 'text-[#53665c]'}`}>
                     {slot.shortName}
                   </span>
                   <span
-                    className={`mt-0.5 w-full truncate text-center text-[8px] font-black leading-none tracking-tighter ${
+                    className={`mt-0.5 w-full truncate text-center text-[12px] font-black leading-none tracking-tight ${
                       isOut ? 'line-through' : ''
                     }`}
                   >
                     {player ? player.firstName : 'Open'}
                   </span>
                   {backup && (
-                    <span className="absolute left-1/2 top-full mt-0.5 max-w-[62px] -translate-x-1/2 truncate rounded-full bg-[#10201a]/70 px-1 text-[8px] font-bold italic leading-tight text-white">
+                    <span className="absolute left-1/2 top-full mt-0.5 max-w-[84px] -translate-x-1/2 truncate rounded-full bg-[#10201a]/70 px-1 text-[12px] font-bold italic leading-tight text-white">
                       {backup.firstName}
                     </span>
                   )}

@@ -12,6 +12,15 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import {
+  classifySteps,
+  findComponent,
+  parsePlayCall,
+  playCallFromSteps,
+  PLAY_COMPONENTS,
+  stepIsComplete,
+  stepLabel
+} from '../lib/play-builder'
+import {
   countPlaysByFormation,
   defaultFormationPositions,
   emptyPlayFilters,
@@ -622,3 +631,58 @@ assert.deepEqual(legacyLayout.formations[0].positions, defaultFormationPositions
 assert.deepEqual(legacyLayout.formations[1].positions, { QB: { x: 20, y: 20 } })
 
 console.log('logic tests passed')
+
+
+// ---- Play builder ----
+// Component ids and phrases are what saved plays point at, so they must be unique.
+assert.equal(new Set(PLAY_COMPONENTS.map((component) => component.id)).size, PLAY_COMPONENTS.length)
+assert.equal(
+  PLAY_COMPONENTS.every((component) => Boolean(findComponent(component.id))),
+  true
+)
+
+// The call reads back in the order the coach says it.
+const keeperSteps = [
+  { id: 's1', componentId: 'hb-stretch', direction: 'right' as const, fake: true },
+  { id: 's2', componentId: 'sweep', receivers: ['4'], fake: true },
+  { id: 's3', componentId: 'qb-keeper' }
+]
+assert.equal(stepLabel(keeperSteps[0]), 'Fake HB Stretch Right')
+assert.equal(playCallFromSteps(keeperSteps), 'Fake HB Stretch Right Fake 4 Sweep QB Keeper')
+// Fakes and motion do not decide what the play is; the last real component does.
+assert.deepEqual(classifySteps(keeperSteps), { type: 'run', area: 'middle' })
+assert.deepEqual(
+  classifySteps([
+    { id: 's1', componentId: 'motion', receivers: ['2'] },
+    { id: 's2', componentId: 'hb-dive', fake: true },
+    { id: 's3', componentId: 'explosion' }
+  ]),
+  { type: 'pass', area: 'deep' }
+)
+// With nothing but fakes there is no real component to classify by.
+assert.deepEqual(classifySteps([{ id: 's1', componentId: 'hb-dive', fake: true }]), { type: 'run', area: 'middle' })
+
+// A carry is not finished until someone is named.
+assert.equal(stepIsComplete({ id: 's', componentId: 'sweep' }), false)
+assert.equal(stepIsComplete({ id: 's', componentId: 'sweep', receivers: ['3'] }), true)
+assert.equal(stepIsComplete({ id: 's', componentId: 'qb-keeper' }), true)
+
+// Written calls read back into steps.
+assert.equal(playCallFromSteps(parsePlayCall('Fake HB Stretch Right Fake 4 Sweep QB Keeper')!), 'Fake HB Stretch Right Fake 4 Sweep QB Keeper')
+// Either receiver can take it, and both are kept.
+assert.deepEqual(parsePlayCall('2 / 3 Sweep')![0].receivers, ['2', '3'])
+assert.equal(playCallFromSteps(parsePlayCall('2 / 3 Sweep')!), '2 / 3 Sweep')
+// Filler between components is dropped.
+assert.equal(playCallFromSteps(parsePlayCall('3 Sweep to 1 Reverse')!), '3 Sweep 1 Reverse')
+// The back is named in the phrase, not as a receiver.
+assert.deepEqual(parsePlayCall('RB Dive')!.map((step) => [step.componentId, step.receivers]), [['hb-dive', undefined]])
+assert.deepEqual(parsePlayCall('3 Dive')!.map((step) => [step.componentId, step.receivers]), [['carry-dive', ['3']]])
+// A carry written without anyone named still opens, waiting for a pick.
+assert.equal(stepIsComplete(parsePlayCall('3 Sweep Fake Reverse')![1]), false)
+// Nonsense does not parse.
+assert.equal(parsePlayCall('Statue Of Liberty'), null)
+assert.equal(parsePlayCall('   '), null)
+
+// Every play in the seeded playbook opens in the builder.
+const unparsed = Array.from(new Set(phinsPlaybook('t').plays.map((play) => play.name))).filter((name) => !parsePlayCall(name))
+assert.deepEqual(unparsed, [])

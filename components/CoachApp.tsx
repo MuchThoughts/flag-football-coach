@@ -47,6 +47,18 @@ import {
   PLAYBOOK_SLOTS,
   type PlayFilters
 } from '@/lib/playbook'
+import {
+  classifySteps,
+  COMPONENT_GROUPS,
+  componentsInGroup,
+  findComponent,
+  parsePlayCall,
+  playCallFromSteps,
+  RECEIVER_CODES,
+  stepIsComplete,
+  stepLabel,
+  type ComponentGroup
+} from '@/lib/play-builder'
 import { LINEUPS_PER_UNIT } from '@/lib/types'
 import PlaybookField from '@/components/PlaybookField'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
@@ -68,13 +80,14 @@ import type {
   PlayFootball,
   Player,
   PlayRoute,
+  PlayStep,
   PlayType,
   ResolvedDrive,
   SlotPositions,
   Unit
 } from '@/lib/types'
 
-type Workflow = 'planning' | 'gameday' | 'playbook'
+type Workflow = 'planning' | 'gameday' | 'playbook' | 'play-builder'
 type SyncStatus = 'local' | 'signed_out' | 'loading' | 'synced' | 'saving' | 'error'
 
 const storageKey = 'flag-football-coach:v3'
@@ -121,6 +134,7 @@ function shortResult(result: DriveResult) {
 
 function workflowFromPath(pathname: string): Workflow {
   if (pathname.includes('/gameday')) return 'gameday'
+  if (pathname.includes('/play-builder')) return 'play-builder'
   if (pathname.includes('/playbook')) return 'playbook'
   return 'planning'
 }
@@ -839,6 +853,8 @@ export default function CoachApp() {
             draggingPlayerId={draggingPlayerId}
             setDraggingPlayerId={setDraggingPlayerId}
           />
+        ) : workflow === 'play-builder' ? (
+          <PlayBuilderPage plays={plays} formations={formations} savePlay={savePlay} deletePlay={deletePlay} />
         ) : workflow === 'playbook' ? (
           <PlaybookPage
             plays={plays}
@@ -877,10 +893,11 @@ export default function CoachApp() {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#d8ded5] bg-white/95 px-3 py-2 shadow-[0_-10px_30px_rgba(16,32,26,0.12)] backdrop-blur safe-bottom">
-        <div className="mx-auto grid max-w-md grid-cols-3 gap-2">
+        <div className="mx-auto grid max-w-md grid-cols-4 gap-1.5">
           <BottomNavButton active={workflow === 'planning'} label="Planning" onClick={() => navigateWorkflow('planning')} />
           <BottomNavButton active={workflow === 'gameday'} label="Gameday" onClick={() => navigateWorkflow('gameday')} />
           <BottomNavButton active={workflow === 'playbook'} label="Playbook" onClick={() => navigateWorkflow('playbook')} />
+          <BottomNavButton active={workflow === 'play-builder'} label="Builder" onClick={() => navigateWorkflow('play-builder')} />
         </div>
       </nav>
     </main>
@@ -1334,6 +1351,424 @@ function FilterChips<T extends string>({
         </button>
       ))}
     </div>
+  )
+}
+
+function PlayBuilderPage({
+  plays,
+  formations,
+  savePlay,
+  deletePlay
+}: {
+  plays: PlaybookPlay[]
+  formations: Formation[]
+  savePlay: (play: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  deletePlay: (playId: string) => void
+}) {
+  const [playId, setPlayId] = useState<string | null>(null)
+  const [formationId, setFormationId] = useState<string | null>(null)
+  const [steps, setSteps] = useState<PlayStep[]>([])
+  const [name, setName] = useState('')
+  const [nameEdited, setNameEdited] = useState(false)
+  const [notes, setNotes] = useState('')
+  const [group, setGroup] = useState<ComponentGroup>('backfield')
+
+  const formation = formations.find((item) => item.id === formationId)
+  const call = playCallFromSteps(steps)
+  const { type, area } = classifySteps(steps)
+  // Anything the builder can say, whether it was written here or drawn earlier.
+  const builtPlays = plays.filter((play) => (play.steps && play.steps.length > 0) || parsePlayCall(play.name))
+  const incomplete = steps.some((step) => !stepIsComplete(step))
+  const displayName = nameEdited ? name : call
+
+  function reset() {
+    setPlayId(null)
+    setFormationId(null)
+    setSteps([])
+    setName('')
+    setNameEdited(false)
+    setNotes('')
+    setGroup('backfield')
+  }
+
+  function addStep(componentId: string, receiver?: string) {
+    setSteps((current) => [...current, { id: uid('step'), componentId, receivers: receiver ? [receiver] : undefined }])
+  }
+
+  /** Tapping a number adds them to the call; tapping again takes them back out. */
+  function toggleReceiver(step: PlayStep, code: string) {
+    const current = step.receivers || []
+    const receivers = current.includes(code) ? current.filter((item) => item !== code) : [...current, code]
+    updateStep(step.id, { receivers })
+  }
+
+  function updateStep(stepId: string, patch: Partial<PlayStep>) {
+    setSteps((current) => current.map((step) => (step.id === stepId ? { ...step, ...patch } : step)))
+  }
+
+  function removeStep(stepId: string) {
+    setSteps((current) => current.filter((step) => step.id !== stepId))
+  }
+
+  function openPlay(play: PlaybookPlay) {
+    const opened = play.steps && play.steps.length > 0 ? play.steps : parsePlayCall(play.name) || []
+    setPlayId(play.id)
+    setFormationId(play.formationId)
+    setSteps(opened)
+    setName(play.name)
+    setNameEdited(play.name !== playCallFromSteps(opened))
+    setNotes(play.notes)
+    setGroup('backfield')
+    window.scrollTo({ top: 0 })
+  }
+
+  function save() {
+    if (!formationId || steps.length === 0) return
+    savePlay({
+      id: playId || uid('play'),
+      name: (displayName || 'Untitled play').trim(),
+      formationId,
+      type,
+      area,
+      notes,
+      routes: [],
+      footballs: [],
+      steps
+    })
+    reset()
+  }
+
+  // --- Step one: which formation are we in?
+  if (!formation) {
+    return (
+      <div className="space-y-4 py-4">
+        <div>
+          <h2 className="font-display text-xl font-black">Play Builder</h2>
+          <p className="text-sm font-bold text-[#53665c]">Start with a formation, then stack up the call.</p>
+        </div>
+
+        {formations.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+            Build a formation in the playbook first.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {formations.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setFormationId(item.id)}
+                className="w-full rounded-lg border border-[#d8ded5] bg-white p-3 text-left"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-black">{item.name}</span>
+                  <span className="text-xs font-black uppercase text-[#53665c]">
+                    {countPlaysByFormation(plays, item.id)} plays
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <PlaybookField positions={item.positions} compact />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {builtPlays.length > 0 && <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} />}
+      </div>
+    )
+  }
+
+  // --- Step two: stack up the components.
+  return (
+    <div className="space-y-4 py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="font-display text-xl font-black">{formation.name}</h2>
+          <p className="text-sm font-bold text-[#53665c]">{playId ? 'Editing a saved play' : 'New play'}</p>
+        </div>
+        <button
+          type="button"
+          onClick={reset}
+          className="shrink-0 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black"
+        >
+          Change
+        </button>
+      </div>
+
+      <PlaybookField positions={formation.positions} compact />
+
+      <section className="rounded-lg border border-[#d8ded5] bg-white p-3">
+        <p className="text-xs font-black uppercase tracking-wide text-[#53665c]">The call</p>
+        <p className="mt-1 font-display text-lg font-black leading-tight">
+          {call || <span className="text-[#9aa79f]">Pick your first component below</span>}
+        </p>
+
+        {steps.length > 0 && (
+          <ul className="mt-3 space-y-2">
+            {steps.map((step, index) => {
+              const component = findComponent(step.componentId)
+              if (!component) return null
+              return (
+                <li key={step.id} className="rounded-lg bg-[#f7f5ee] px-2 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#10201a] text-xs font-black text-white">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1 truncate text-sm font-black">
+                      {stepLabel(step) || component.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeStep(step.id)}
+                      aria-label={`Remove ${component.label}`}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#53665c]"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-8">
+                    <StepToggle
+                      active={Boolean(step.fake)}
+                      label="Fake"
+                      onClick={() => updateStep(step.id, { fake: !step.fake })}
+                    />
+                    {component.hasDirection && (
+                      <>
+                        <StepToggle
+                          active={step.direction === 'left'}
+                          label="Left"
+                          onClick={() =>
+                            updateStep(step.id, { direction: step.direction === 'left' ? undefined : 'left' })
+                          }
+                        />
+                        <StepToggle
+                          active={step.direction === 'right'}
+                          label="Right"
+                          onClick={() =>
+                            updateStep(step.id, { direction: step.direction === 'right' ? undefined : 'right' })
+                          }
+                        />
+                      </>
+                    )}
+                    {component.needsReceiver && (
+                      <>
+                        <span className="pl-1 text-xs font-black uppercase text-[#53665c]">Who</span>
+                        {RECEIVER_CODES.map((code) => (
+                          <StepToggle
+                            key={code}
+                            active={(step.receivers || []).includes(code)}
+                            label={code}
+                            onClick={() => toggleReceiver(step, code)}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
+
+      <section className="space-y-2">
+        <div className="-mx-4 overflow-x-auto px-4">
+          <div className="flex w-max gap-2">
+            {COMPONENT_GROUPS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setGroup(item.id)}
+                className={`shrink-0 rounded-full px-3 py-2 text-xs font-black uppercase ${
+                  group === item.id ? 'bg-[#10201a] text-white' : 'bg-[#f7f5ee] text-[#53665c]'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            {componentsInGroup(group)
+              .filter((component) => !component.needsReceiver)
+              .map((component) => (
+                <button
+                  key={component.id}
+                  type="button"
+                  onClick={() => addStep(component.id)}
+                  className="rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black"
+                >
+                  {component.label}
+                </button>
+              ))}
+          </div>
+
+          {componentsInGroup(group)
+            .filter((component) => component.needsReceiver)
+            .map((component) => (
+              <div
+                key={component.id}
+                className="flex items-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-2"
+              >
+                <span className="flex-1 truncate text-sm font-black">{component.label}</span>
+                {RECEIVER_CODES.map((code) => (
+                  <button
+                    key={code}
+                    type="button"
+                    onClick={() => addStep(component.id, code)}
+                    aria-label={`${code} ${component.label}`}
+                    className="h-9 w-9 rounded-full bg-[#f7f5ee] text-sm font-black text-[#10201a]"
+                  >
+                    {code}
+                  </button>
+                ))}
+              </div>
+            ))}
+        </div>
+      </section>
+
+      <section className="space-y-2 rounded-lg border border-[#d8ded5] bg-white p-3">
+        <label className="block">
+          <span className="text-xs font-black uppercase tracking-wide text-[#53665c]">Save it as</span>
+          <input
+            value={displayName}
+            onChange={(event) => {
+              setName(event.target.value)
+              setNameEdited(true)
+            }}
+            placeholder="Play name"
+            aria-label="Play name"
+            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black outline-none focus:border-[#1f7a4d]"
+          />
+        </label>
+        {nameEdited && call && (
+          <button
+            type="button"
+            onClick={() => {
+              setNameEdited(false)
+              setName('')
+            }}
+            className="text-xs font-black uppercase text-[#1f7a4d]"
+          >
+            Use the call
+          </button>
+        )}
+
+        <label className="block">
+          <span className="text-xs font-black uppercase tracking-wide text-[#53665c]">Notes</span>
+          <input
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            placeholder="When to call it"
+            aria-label="Play notes"
+            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+          />
+        </label>
+
+        <p className="text-xs font-black uppercase text-[#53665c]">
+          Files as {type} · {area}
+          {incomplete && <span className="text-[#b4402f]"> · a step still needs a receiver</span>}
+        </p>
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={save}
+            disabled={steps.length === 0 || incomplete}
+            className="flex-1 rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40"
+          >
+            {playId ? 'Save changes' : 'Save play'}
+          </button>
+          {playId && (
+            <button
+              type="button"
+              onClick={() => {
+                deletePlay(playId)
+                reset()
+              }}
+              className="rounded-lg border border-[#b4402f] px-3 py-3 font-black text-[#b4402f]"
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </section>
+
+      {builtPlays.length > 0 && <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} />}
+    </div>
+  )
+}
+
+function StepToggle({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`rounded-full px-2.5 py-1 text-xs font-black ${
+        active ? 'bg-[#1f7a4d] text-white' : 'bg-white text-[#53665c] ring-1 ring-[#d8ded5]'
+      }`}
+    >
+      {label}
+    </button>
+  )
+}
+
+/** Every play written in the builder, so a call can be picked back up and edited. */
+function BuiltPlayList({
+  plays,
+  formations,
+  onOpen
+}: {
+  plays: PlaybookPlay[]
+  formations: Formation[]
+  onOpen: (play: PlaybookPlay) => void
+}) {
+  const [search, setSearch] = useState('')
+  const term = search.trim().toLowerCase()
+  const visible = plays.filter((play) => !term || play.name.toLowerCase().includes(term))
+
+  return (
+    <section className="space-y-2">
+      <h3 className="font-display text-lg font-black">
+        Every play <span className="text-sm font-black text-[#53665c]">({plays.length})</span>
+      </h3>
+      <input
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Search plays"
+        aria-label="Search every play"
+        className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+      />
+      {visible.length === 0 && (
+        <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+          No plays match that.
+        </p>
+      )}
+      {visible.map((play) => (
+        <button
+          key={play.id}
+          type="button"
+          onClick={() => onOpen(play)}
+          className="w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate font-black">{play.name}</span>
+            <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
+              {play.type}
+            </span>
+          </div>
+          <p className="mt-1 text-sm font-bold text-[#53665c]">{playCallFromSteps(play.steps || [])}</p>
+          <p className="mt-1 text-xs font-black uppercase text-[#53665c]">
+            {formations.find((item) => item.id === play.formationId)?.name || 'No formation'} · {play.area}
+          </p>
+        </button>
+      ))}
+    </section>
   )
 }
 

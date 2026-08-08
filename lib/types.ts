@@ -162,6 +162,16 @@ export interface Formation {
   updatedAt: string
 }
 
+/** One component of a play call, in the order the coach says it. */
+export interface PlayStep {
+  id: string
+  componentId: string
+  /** Who it belongs to, for components that name someone. "2 / 3" is two options. */
+  receivers?: string[]
+  direction?: 'left' | 'right'
+  fake?: boolean
+}
+
 export interface PlaybookPlay {
   id: string
   teamId: string
@@ -172,6 +182,8 @@ export interface PlaybookPlay {
   notes: string
   routes: PlayRoute[]
   footballs: PlayFootball[]
+  /** Set when the play was written in the builder rather than drawn. */
+  steps?: PlayStep[]
   createdAt: string
   updatedAt: string
 }

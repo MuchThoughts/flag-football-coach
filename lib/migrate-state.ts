@@ -297,17 +297,14 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
   return { plays, formations }
 }
 
-const legacySamplePlayIds = ['play-1', 'play-2']
 const legacySampleFormationIds = ['formation-balanced', 'formation-trips-right']
 
 /**
- * The real formations and play list are added the first time a saved state is
- * opened, alongside whatever the coach has already written. The demo plays the
- * app used to ship with are dropped, and the demo formations with them unless a
- * play the coach kept still points at one.
- *
- * A marker on the state records that this has happened, so plays deleted later
- * stay deleted instead of coming back on the next load.
+ * The formations seed a new playbook once, alongside any the coach has drawn
+ * themselves. The plays that used to be seeded with them are cleared out — a
+ * hundred generated calls is clutter, not a playbook — and a marker on the
+ * state records that this has happened, so nothing comes back on the next load
+ * and plays written from here on are left alone.
  */
 function seedPhinsPlaybook(state: AppState): AppState {
   if (state.playbookSeed === PHINS_PLAYBOOK_SEED) {
@@ -315,20 +312,12 @@ function seedPhinsPlaybook(state: AppState): AppState {
   }
 
   const seed = phinsPlaybook(state.team.id)
-  const kept = state.plays.filter((play) => !legacySamplePlayIds.includes(play.id))
-  const keptFormations = state.formations.filter(
-    (formation) =>
-      !legacySampleFormationIds.includes(formation.id) ||
-      kept.some((play) => play.formationId === formation.id)
-  )
+  const kept = state.formations.filter((formation) => !legacySampleFormationIds.includes(formation.id))
 
   return {
     ...state,
-    plays: [...seed.plays.filter((play) => !kept.some((item) => item.id === play.id)), ...kept],
-    formations: [
-      ...seed.formations.filter((formation) => !keptFormations.some((item) => item.id === formation.id)),
-      ...keptFormations
-    ],
+    plays: [],
+    formations: [...seed.formations.filter((formation) => !kept.some((item) => item.id === formation.id)), ...kept],
     playbookSeed: PHINS_PLAYBOOK_SEED
   }
 }

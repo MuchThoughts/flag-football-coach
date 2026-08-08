@@ -153,7 +153,7 @@ export const initialAppState: AppState = {
       updatedAt: '2026-09-01T00:00:00.000Z'
     }
   ],
-  plays: seedPlaybook.plays,
+  plays: [],
   formations: seedPlaybook.formations,
   playbookSeed: PHINS_PLAYBOOK_SEED,
   lineups: sampleLineups,

@@ -1355,6 +1355,149 @@ function FilterChips<T extends string>({
   )
 }
 
+/** A play in a list. Tapping opens it; holding brings up edit and delete. */
+function PlayRow({
+  play,
+  subtitle,
+  meta,
+  onOpen,
+  onHold
+}: {
+  play: PlaybookPlay
+  subtitle?: string
+  meta: string
+  onOpen: () => void
+  onHold: () => void
+}) {
+  const [holding, setHolding] = useState(false)
+  const holdTimerRef = useRef<number | null>(null)
+  const holdFiredRef = useRef(false)
+  const startRef = useRef({ x: 0, y: 0 })
+
+  function cancelHold() {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
+    }
+    setHolding(false)
+  }
+
+  useEffect(() => cancelHold, [])
+
+  return (
+    <button
+      type="button"
+      onContextMenu={(event) => event.preventDefault()}
+      onPointerDown={(event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return
+        startRef.current = { x: event.clientX, y: event.clientY }
+        holdFiredRef.current = false
+        setHolding(true)
+        holdTimerRef.current = window.setTimeout(() => {
+          holdFiredRef.current = true
+          holdTimerRef.current = null
+          setHolding(false)
+          navigator.vibrate?.(20)
+          onHold()
+        }, playHoldDuration)
+      }}
+      onPointerMove={(event) => {
+        // A finger drifts while it is held; scrolling away should call it off.
+        const drift = Math.hypot(event.clientX - startRef.current.x, event.clientY - startRef.current.y)
+        if (holdTimerRef.current && drift > 12) {
+          cancelHold()
+        }
+      }}
+      onPointerUp={cancelHold}
+      onPointerCancel={cancelHold}
+      onClick={() => {
+        if (holdFiredRef.current) return
+        onOpen()
+      }}
+      className="relative w-full select-none overflow-hidden rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
+    >
+      <div
+        aria-hidden
+        style={{ width: holding ? '100%' : '0%', transition: holding ? `width ${playHoldDuration}ms linear` : 'none' }}
+        className="absolute inset-y-0 left-0 bg-[#f7c948]/50"
+      />
+      <div className="relative">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate font-black">{play.name}</span>
+          <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
+            {play.type}
+          </span>
+        </div>
+        {subtitle && <p className="mt-1 text-sm font-bold text-[#53665c]">{subtitle}</p>}
+        <p className="mt-1 text-xs font-black uppercase text-[#53665c]">{meta}</p>
+      </div>
+    </button>
+  )
+}
+
+/** Edit or delete, after holding a play down. */
+function PlayActionsSheet({
+  play,
+  onEdit,
+  onDelete,
+  onClose
+}: {
+  play: PlaybookPlay
+  onEdit: () => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const [confirming, setConfirming] = useState(false)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+        <h3 className="truncate font-display text-xl font-black">{play.name}</h3>
+        <p className="mt-1 text-sm font-bold text-[#53665c]">
+          {confirming ? 'Deleting a play cannot be undone.' : 'Edit the call or delete the play.'}
+        </p>
+
+        {confirming ? (
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-3 font-black text-white"
+            >
+              <Trash2 size={16} />
+              Delete
+            </button>
+          </div>
+        ) : (
+          <div className="mt-4 space-y-2">
+            <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#c2412d] px-3 py-3 font-black text-[#c2412d]"
+            >
+              <Trash2 size={16} />
+              Delete
+            </button>
+            <button type="button" onClick={onClose} className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function PlayBuilderPage({
   plays,
   formations,
@@ -1373,6 +1516,7 @@ function PlayBuilderPage({
   const [nameEdited, setNameEdited] = useState(false)
   const [notes, setNotes] = useState('')
   const [group, setGroup] = useState<ComponentGroup>('backfield')
+  const [actingOnPlay, setActingOnPlay] = useState<PlaybookPlay | null>(null)
 
   const formation = formations.find((item) => item.id === formationId)
   const call = playCallFromSteps(steps, formation?.name)
@@ -1464,7 +1608,7 @@ function PlayBuilderPage({
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-black">{item.name}</span>
                   <span className="text-xs font-black uppercase text-[#53665c]">
-                    {countPlaysByFormation(plays, item.id)} plays
+                    {countPlaysByFormation(plays, item.id)} play{countPlaysByFormation(plays, item.id) === 1 ? '' : 's'}
                   </span>
                 </div>
                 <div className="mt-2">
@@ -1475,7 +1619,23 @@ function PlayBuilderPage({
           </div>
         )}
 
-        {builtPlays.length > 0 && <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} />}
+        {builtPlays.length > 0 && (
+          <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} onHold={setActingOnPlay} />
+        )}
+        {actingOnPlay && (
+          <PlayActionsSheet
+            play={actingOnPlay}
+            onEdit={() => {
+              openPlay(actingOnPlay)
+              setActingOnPlay(null)
+            }}
+            onDelete={() => {
+              deletePlay(actingOnPlay.id)
+              setActingOnPlay(null)
+            }}
+            onClose={() => setActingOnPlay(null)}
+          />
+        )}
       </div>
     )
   }
@@ -1699,7 +1859,27 @@ function PlayBuilderPage({
         </div>
       </section>
 
-      {builtPlays.length > 0 && <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} />}
+      {builtPlays.length > 0 && (
+        <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} onHold={setActingOnPlay} />
+      )}
+
+      {actingOnPlay && (
+        <PlayActionsSheet
+          play={actingOnPlay}
+          onEdit={() => {
+            openPlay(actingOnPlay)
+            setActingOnPlay(null)
+          }}
+          onDelete={() => {
+            deletePlay(actingOnPlay.id)
+            if (actingOnPlay.id === playId) {
+              reset()
+            }
+            setActingOnPlay(null)
+          }}
+          onClose={() => setActingOnPlay(null)}
+        />
+      )}
     </div>
   )
 }
@@ -1723,11 +1903,13 @@ function StepToggle({ active, label, onClick }: { active: boolean; label: string
 function BuiltPlayList({
   plays,
   formations,
-  onOpen
+  onOpen,
+  onHold
 }: {
   plays: PlaybookPlay[]
   formations: Formation[]
   onOpen: (play: PlaybookPlay) => void
+  onHold: (play: PlaybookPlay) => void
 }) {
   const [search, setSearch] = useState('')
   const term = search.trim().toLowerCase()
@@ -1759,24 +1941,15 @@ function BuiltPlayList({
         const formationName = formations.find((item) => item.id === play.formationId)?.name
         const call = playCallFromSteps(stepsFromPlay(play, formations) || [], formationName)
         return (
-          <button
+          <PlayRow
             key={play.id}
-            type="button"
-            onClick={() => onOpen(play)}
-            className="w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="truncate font-black">{play.name}</span>
-              <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
-                {play.type}
-              </span>
-            </div>
-            {/* The call is only worth repeating when the play goes by another name. */}
-            {call !== play.name && <p className="mt-1 text-sm font-bold text-[#53665c]">{call}</p>}
-            <p className="mt-1 text-xs font-black uppercase text-[#53665c]">
-              {formationName || 'No formation'} · {play.area}
-            </p>
-          </button>
+            play={play}
+            // The call is only worth repeating when the play goes by another name.
+            subtitle={call === play.name ? undefined : call}
+            meta={`${formationName || 'No formation'} · ${play.area}`}
+            onOpen={() => onOpen(play)}
+            onHold={() => onHold(play)}
+          />
         )
       })}
     </section>
@@ -1803,9 +1976,11 @@ function PlaybookPage({
   const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
   const [openPlayId, setOpenPlayId] = useState<string | null>(null)
+  const [actingOnPlayId, setActingOnPlayId] = useState<string | null>(null)
 
   const visiblePlays = filterPlays(plays, formations, filters)
   const openPlay = plays.find((play) => play.id === openPlayId)
+  const actingOnPlay = plays.find((play) => play.id === actingOnPlayId)
 
   return (
     <div className="space-y-4 py-4">
@@ -1897,23 +2072,14 @@ function PlaybookPage({
             {visiblePlays.map((play) => {
               const formation = formations.find((item) => item.id === play.formationId)
               return (
-                <button
+                <PlayRow
                   key={play.id}
-                  type="button"
-                  onClick={() => setOpenPlayId(play.id)}
-                  className="w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate font-black">{play.name}</span>
-                    <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
-                      {play.type}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs font-black uppercase text-[#53665c]">
-                    {formation?.name || 'No formation'} · {play.area}
-                  </p>
-                  {play.notes && <p className="mt-1 truncate text-sm font-bold text-[#53665c]">{play.notes}</p>}
-                </button>
+                  play={play}
+                  subtitle={play.notes}
+                  meta={`${formation?.name || 'No formation'} · ${play.area}`}
+                  onOpen={() => setOpenPlayId(play.id)}
+                  onHold={() => setActingOnPlayId(play.id)}
+                />
               )
             })}
           </div>
@@ -1949,6 +2115,21 @@ function PlaybookPage({
             </div>
           ))}
         </section>
+      )}
+
+      {actingOnPlay && (
+        <PlayActionsSheet
+          play={actingOnPlay}
+          onEdit={() => {
+            setEditingPlay(actingOnPlay)
+            setActingOnPlayId(null)
+          }}
+          onDelete={() => {
+            deletePlay(actingOnPlay.id)
+            setActingOnPlayId(null)
+          }}
+          onClose={() => setActingOnPlayId(null)}
+        />
       )}
 
       {editingPlay && (
@@ -2640,6 +2821,8 @@ function DeleteGameSheet({
 const swipeRemoveDistance = 128
 const swipeOpenDistance = 112
 const longPressDuration = 2000
+/** Holding a play brings up edit and delete. */
+const playHoldDuration = 3000
 
 /**
  * Swipe left to drop a player from today's list. A short swipe parks the row open

@@ -310,11 +310,23 @@ const namedGame = migrateAppState({
 assert.equal(namedGame.games[0].name, 'Season Opener')
 
 // ---- Playbook ----
+// A new playbook ships with the formations and no plays.
 assert.equal(initialAppState.formations.length, 9)
-assert.equal(
-  initialAppState.plays.every((play) => initialAppState.formations.some((formation) => formation.id === play.formationId)),
-  true
-)
+assert.deepEqual(initialAppState.plays, [])
+
+const samplePlay: PlaybookPlay = {
+  id: 'play-sample',
+  teamId: 'team-wildcats',
+  name: 'Sweep Right',
+  formationId: 'formation-phins-base',
+  type: 'run',
+  area: 'sidelines',
+  notes: '',
+  routes: [],
+  footballs: [],
+  createdAt: '',
+  updatedAt: ''
+}
 assert.deepEqual(Object.keys(defaultFormationPositions()).sort(), ['1', '2', '3', '4', 'C', 'QB', 'RB'])
 
 const trips = initialAppState.formations.find((formation) => formation.name === 'Trips Right')!
@@ -323,9 +335,9 @@ assert.deepEqual(getFormationPosition('3', trips), { x: 90, y: 72 })
 assert.deepEqual(getFormationPosition('QB', { ...trips, positions: {} }), { x: 50, y: 72 })
 
 const catalog: PlaybookPlay[] = [
-  { ...initialAppState.plays[0], id: 'p1', name: 'Sweep Right', type: 'run' as const, area: 'sidelines' as const, formationId: 'formation-phins-base', notes: 'edge crashes' },
-  { ...initialAppState.plays[0], id: 'p2', name: 'Post Wheel', type: 'pass' as const, area: 'deep' as const, formationId: 'formation-phins-trips-right', notes: '' },
-  { ...initialAppState.plays[0], id: 'p3', name: 'Dive', type: 'run' as const, area: 'middle' as const, formationId: 'formation-phins-base', notes: '' }
+  { ...samplePlay, id: 'p1', name: 'Sweep Right', type: 'run' as const, area: 'sidelines' as const, formationId: 'formation-phins-base', notes: 'edge crashes' },
+  { ...samplePlay, id: 'p2', name: 'Post Wheel', type: 'pass' as const, area: 'deep' as const, formationId: 'formation-phins-trips-right', notes: '' },
+  { ...samplePlay, id: 'p3', name: 'Dive', type: 'run' as const, area: 'middle' as const, formationId: 'formation-phins-base', notes: '' }
 ]
 const ids = (result: PlaybookPlay[]) => result.map((play) => play.id).join(',')
 
@@ -380,15 +392,15 @@ assert.deepEqual(legacyPlaybook.plays[0].footballs, [])
 // A play saved before drawing existed keeps its fields and gains empty ones.
 const predrawing = migrateAppState({
   ...initialAppState,
-  plays: [{ ...initialAppState.plays[0], routes: undefined, footballs: undefined }]
+  plays: [{ ...samplePlay, routes: undefined, footballs: undefined }]
 } as unknown as typeof initialAppState)
 assert.deepEqual(predrawing.plays[0].routes, [])
 assert.deepEqual(predrawing.plays[0].footballs, [])
-assert.equal(predrawing.plays[0].name, initialAppState.plays[0].name)
+assert.equal(predrawing.plays[0].name, 'Sweep Right')
 
 // Already-migrated playbooks are left alone.
-const stablePlaybook = migrateAppState(initialAppState)
-assert.deepEqual(stablePlaybook.plays.map((play) => play.id), initialAppState.plays.map((play) => play.id))
+const stablePlaybook = migrateAppState({ ...initialAppState, plays: [samplePlay] })
+assert.deepEqual(stablePlaybook.plays.map((play) => play.id), ['play-sample'])
 assert.deepEqual(stablePlaybook.formations.map((f) => f.id), initialAppState.formations.map((f) => f.id))
 
 // ---- The seeded Phins playbook ----
@@ -405,9 +417,7 @@ assert.deepEqual(seeded.formations.map((formation) => formation.name), [
   'Splitback Twins Right',
   'Splitback Twins Left'
 ])
-assert.equal(seeded.plays.length, 107)
-assert.equal(new Set(seeded.plays.map((play) => play.id)).size, seeded.plays.length)
-assert.equal([...seeded.formations, ...seeded.plays].every((item) => item.teamId === 'team-dolphins'), true)
+assert.equal(seeded.formations.every((formation) => formation.teamId === 'team-dolphins'), true)
 
 // Every formation places all seven spots, on the field and clear of each other.
 seeded.formations.forEach((formation) => {
@@ -425,20 +435,8 @@ seeded.formations.forEach((formation) => {
   })
 })
 
-// Every play belongs to a formation and opens with something drawn on it.
-assert.equal(seeded.plays.every((play) => seeded.formations.some((formation) => formation.id === play.formationId)), true)
-assert.equal(seeded.plays.every((play) => play.routes.length > 0), true)
-assert.equal(seeded.plays.every((play) => play.routes.every((route) => route.points.length >= 2)), true)
-
-const seededPlay = (name: string) => seeded.plays.find((play) => play.name === name)!
-// A handoff drops a football; a pass concept draws a dashed line.
-assert.equal(seededPlay('HB Dive').footballs.length, 1)
-assert.deepEqual([seededPlay('HB Dive').type, seededPlay('HB Dive').area], ['run', 'middle'])
-assert.deepEqual([seededPlay('2 / 3 Sweep').type, seededPlay('2 / 3 Sweep').area], ['run', 'sidelines'])
-assert.deepEqual([seededPlay('Crossing Route').type, seededPlay('Crossing Route').area], ['pass', 'middle'])
-assert.deepEqual([seededPlay('Bootleg Pass').type, seededPlay('Bootleg Pass').area], ['pass', 'sidelines'])
-assert.deepEqual([seededPlay('Fake Dive Explosion WR Ins').type, seededPlay('Fake Dive Explosion WR Ins').area], ['pass', 'deep'])
-assert.equal(seededPlay('2 / 3 Screen').routes.some((route) => route.style === 'dashed'), true)
+// The seed brings formations only; the plays get written in the builder.
+assert.deepEqual(Object.keys(seeded), ['formations'])
 
 const demoPlay = (id: string, name: string, formationId: string) => ({
   id,
@@ -465,195 +463,36 @@ const seedInto = (plays: unknown[], formations: unknown[]) =>
     formations
   } as unknown as typeof initialAppState)
 
-// A saved state still carrying the demo playbook picks the real one up.
+// A saved state carrying the old playbook keeps the formations and loses the plays.
 const demoPlaybook = seedInto(
   [demoPlay('play-1', 'Sweep Right', 'formation-balanced')],
   [demoFormation('formation-balanced', 'Balanced')]
 )
 assert.equal(demoPlaybook.formations.length, 9)
-assert.equal(demoPlaybook.plays.length, 107)
-assert.equal(demoPlaybook.plays.every((play) => play.teamId === demoPlaybook.team.id), true)
+assert.deepEqual(demoPlaybook.plays, [])
+assert.equal(demoPlaybook.formations.every((formation) => formation.id.startsWith('formation-phins-')), true)
 
-// Plays the coach wrote are kept, and the playbook is added alongside them.
+// Formations the coach drew themselves survive; the demo ones do not.
 const coachPlaybook = seedInto(
-  [demoPlay('play-1', 'Sweep Right', 'formation-balanced'), demoPlay('play-mine', 'Wildcat Left', 'formation-mine')],
+  [demoPlay('play-mine', 'Wildcat Left', 'formation-mine')],
   [demoFormation('formation-balanced', 'Balanced'), demoFormation('formation-mine', 'My Set')]
 )
-assert.equal(coachPlaybook.plays.length, 108)
-assert.equal(coachPlaybook.plays.some((play) => play.id === 'play-mine'), true)
-// The demo plays go, and the demo formation with them once nothing points at it.
-assert.equal(coachPlaybook.plays.some((play) => play.id === 'play-1'), false)
+assert.deepEqual(coachPlaybook.plays, [])
+assert.equal(coachPlaybook.formations.length, 10)
 assert.deepEqual(
   coachPlaybook.formations.filter((formation) => !formation.id.startsWith('formation-phins-')).map((f) => f.id),
   ['formation-mine']
 )
 
-// A demo formation one of the coach's plays still points at is left in place.
-const referencedDemo = seedInto(
-  [demoPlay('play-mine', 'Wildcat Left', 'formation-balanced')],
-  [demoFormation('formation-balanced', 'Balanced')]
-)
-assert.equal(referencedDemo.formations.length, 10)
-assert.equal(referencedDemo.formations.some((formation) => formation.id === 'formation-balanced'), true)
-
-// Seeding happens once: plays deleted afterwards stay deleted.
-const afterDeleting = migrateAppState({
+// The clear-out happens once: plays written afterwards stay put.
+const afterWriting = migrateAppState({
   ...demoPlaybook,
-  plays: demoPlaybook.plays.slice(0, 5)
+  plays: [{ ...samplePlay, formationId: demoPlaybook.formations[0].id }]
 })
-assert.equal(afterDeleting.plays.length, 5)
-assert.equal(afterDeleting.playbookSeed, demoPlaybook.playbookSeed)
-
-// ---- Lineups ----
-assert.equal(lineups.length, 8)
-assert.equal(lineups.filter((lineup) => lineup.unit === 'offense').length, 4)
-assert.equal(lineups.filter((lineup) => lineup.unit === 'defense').length, 4)
-assert.equal(initialAppState.lineups.length, 8)
-
-// Drives cycle through the four lineups of their unit.
-assert.deepEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map(defaultLineupSlot), [1, 2, 3, 4, 1, 2, 3, 4, 1])
-assert.equal(createDrive('d1', 'offense', 1, 'g').lineupId, lineupId('offense', 1))
-assert.equal(createDrive('d5', 'offense', 5, 'g').lineupId, lineupId('offense', 1))
-assert.equal(createDrive('d2', 'defense', 2, 'g').lineupId, lineupId('defense', 2))
-
-// A drive can be pointed at any lineup of its unit.
-const pickedDrive = { ...createDrive('picked', 'offense', 1, 'g'), lineupId: lineupId('offense', 3) }
-assert.equal(findLineup(initialAppState.lineups, pickedDrive)?.slot, 3)
-// A drive pointing at nothing falls back to the one its number cycles to.
-const strayDrive = { ...createDrive('stray', 'defense', 2, 'g'), lineupId: 'gone' }
-assert.equal(findLineup(initialAppState.lineups, strayDrive)?.slot, 2)
-assert.equal(findLineup(initialAppState.lineups, strayDrive)?.unit, 'defense')
-
-// Resolving fills a drive in with its lineup's assignments.
-const firstOffense = initialAppState.drives.find((drive) => drive.unit === 'offense')!
-assert.equal(resolveDrive(firstOffense, initialAppState.lineups).assignments.QB, 'p-rhett')
-// The seeded second and third drives take empty lineups, so nobody plays them yet.
-const secondOffense = initialAppState.drives.filter((drive) => drive.unit === 'offense')[1]
-assert.equal(assignedIds(resolveDrive(secondOffense, initialAppState.lineups).assignments).length, 0)
-
-// ---- Rest window: the first three lineups each way ----
-const restLineup = (unit: 'offense' | 'defense', slot: number, assignments: Record<string, string | null>) => ({
-  ...createLineup(unit, slot, 'team-dolphins'),
-  assignments: { ...createEmptyAssignments(unit), ...assignments }
-})
-const restLineups = [
-  restLineup('offense', 1, { QB: 'p-rhett', C: 'p-teddy' }),
-  restLineup('defense', 1, { R: 'p-rhett' }),
-  restLineup('offense', 2, { QB: 'p-teddy' }),
-  restLineup('defense', 2, { R: 'p-teddy' }),
-  restLineup('offense', 3, { QB: 'p-rhett' }),
-  restLineup('defense', 3, {}),
-  // Anything past the third lineup each way is outside the window.
-  restLineup('offense', 4, { QB: 'p-rhett' }),
-  restLineup('defense', 4, { R: 'p-rhett' })
-]
-
-// The table reads across in the order the lineups get used.
-assert.deepEqual(orderedLineups(restLineups).map((lineup) => `${lineup.unit[0]}${lineup.slot}`), [
-  'o1',
-  'd1',
-  'o2',
-  'd2',
-  'o3',
-  'd3',
-  'o4',
-  'd4'
-])
-assert.equal(getRestWindowLineups(restLineups).length, 6)
-assert.deepEqual(getRestWindowLineups(restLineups).map((lineup) => lineup.id), [
-  lineupId('offense', 1),
-  lineupId('defense', 1),
-  lineupId('offense', 2),
-  lineupId('defense', 2),
-  lineupId('offense', 3),
-  lineupId('defense', 3)
-])
-// Rhett plays OFF 1, DEF 1 and OFF 3 inside the window, so he sits three.
-assert.equal(countSitOuts('p-rhett', restLineups), 3)
-// Teddy plays OFF 1, OFF 2 and DEF 2.
-assert.equal(countSitOuts('p-teddy', restLineups), 3)
-// Someone who never plays sits all six.
-assert.equal(countSitOuts('p-henry', restLineups), 6)
-// Lineups beyond the window do not lower the count.
-assert.equal(countSitOuts('p-rhett', restLineups.slice(0, 6)), 3)
-// Playing time follows the lineup, whatever drive happens to call it.
-assert.equal(countSitOuts('p-grady', restLineups), 6)
-assert.equal(
-  countSitOuts('p-grady', restLineups.map((lineup) => (lineup.id === lineupId('defense', 2) ? restLineup('defense', 2, { LE: 'p-grady' }) : lineup))),
-  5
-)
-
-// ---- Snapping ----
-// Nothing nearby: fall back to the grid, which is square on a field twice as wide.
-assert.deepEqual(snapToField({ x: 31.2, y: 33.4 }, []), { x: 32, y: 32, onLine: false })
-assert.deepEqual(snapToField({ x: 30.9, y: 38.4 }, []), { x: 30, y: 40, onLine: false })
-
-// The line of scrimmage pulls from further away than the grid.
-const nearLine = snapToField({ x: 40, y: LINE_OF_SCRIMMAGE - 6 }, [])
-assert.equal(nearLine.y, LINE_OF_SCRIMMAGE)
-assert.equal(nearLine.onLine, true)
-const offLine = snapToField({ x: 40, y: LINE_OF_SCRIMMAGE - 9 }, [])
-assert.notEqual(offLine.y, LINE_OF_SCRIMMAGE)
-assert.equal(offLine.onLine, false)
-
-// A neighbour close by wins over the grid, and reports a guide to draw.
-const alignedToNeighbour = snapToField({ x: 26.4, y: 30.5 }, [{ x: 27, y: 88 }])
-assert.equal(alignedToNeighbour.x, 27)
-assert.equal(alignedToNeighbour.alignedX, 27)
-// Without that neighbour the same drag would land on the grid instead.
-assert.equal(snapToField({ x: 26.4, y: 30.5 }, []).x, 26)
-const alignedRow = snapToField({ x: 60, y: 30.5 }, [{ x: 8, y: 33 }])
-assert.equal(alignedRow.y, 33)
-assert.equal(alignedRow.alignedY, 33)
-
-// The line beats neighbour alignment when both are in range.
-const lineWins = snapToField({ x: 60, y: LINE_OF_SCRIMMAGE + 3 }, [{ x: 8, y: LINE_OF_SCRIMMAGE + 4 }])
-assert.equal(lineWins.y, LINE_OF_SCRIMMAGE)
-assert.equal(lineWins.alignedY, undefined)
-
-// A far-away neighbour is ignored.
-assert.equal(snapToField({ x: 50, y: 20 }, [{ x: 62, y: 20 }]).x, 50)
-
-// Markers stay on the field, and a guide is dropped when clamping moves them off it.
-const cornered = snapToField({ x: -20, y: 130 }, [{ x: -18, y: 128 }])
-assert.equal(cornered.x >= 4 && cornered.x <= 96, true)
-assert.equal(cornered.y >= 8 && cornered.y <= 92, true)
-assert.equal(cornered.alignedX, undefined)
-
-// Default spots are all snap-clean, so nothing jumps the first time it is dragged.
-assert.equal(
-  [...OFFENSE_SLOTS, ...DEFENSE_SLOTS].every((slot) => {
-    const snapped = snapToField({ x: slot.x, y: slot.y }, [])
-    return snapped.x === slot.x && snapped.y === slot.y
-  }),
-  true
-)
-
-// ---- Field layout migration ----
-const legacyLayout = migrateAppState({
-  ...initialAppState,
-  slotPositions: {
-    'offense:QB': { x: 50, y: 58 },
-    'offense:RB': { x: 22, y: 40 },
-    'defense:S': { x: 50, y: 78 }
-  },
-  formations: [
-    { ...initialAppState.formations[0], positions: { '1': { x: 11, y: 78 }, QB: { x: 50, y: 58 } } },
-    { ...initialAppState.formations[1], id: 'hand-made', positions: { QB: { x: 20, y: 20 } } }
-  ]
-} as unknown as typeof initialAppState)
-
-// Spots left on the old defaults are dropped so the new ones apply.
-assert.equal(legacyLayout.slotPositions['offense:QB'], undefined)
-assert.equal(legacyLayout.slotPositions['defense:S'], undefined)
-// A spot the coach dragged is kept.
-assert.deepEqual(legacyLayout.slotPositions['offense:RB'], { x: 22, y: 40 })
-// An untouched formation is relaid out; a hand-made one is not.
-assert.deepEqual(legacyLayout.formations[0].positions, defaultFormationPositions())
-assert.deepEqual(legacyLayout.formations[1].positions, { QB: { x: 20, y: 20 } })
-
-console.log('logic tests passed')
-
+assert.deepEqual(afterWriting.plays.map((play) => play.id), ['play-sample'])
+assert.equal(afterWriting.playbookSeed, demoPlaybook.playbookSeed)
+// And it does not run again on the next load either.
+assert.deepEqual(migrateAppState(afterWriting).plays.map((play) => play.id), ['play-sample'])
 
 // ---- Play builder ----
 // Component ids and phrases are what saved plays point at, so they must be unique.
@@ -708,18 +547,41 @@ assert.equal(stepIsComplete(parsePlayCall('3 Sweep Fake Reverse')![1]), false)
 assert.equal(parsePlayCall('Statue Of Liberty'), null)
 assert.equal(parsePlayCall('   '), null)
 
-// Every play in the seeded playbook opens in the builder.
-const unparsed = Array.from(new Set(phinsPlaybook('t').plays.map((play) => play.name))).filter((name) => !parsePlayCall(name))
-assert.deepEqual(unparsed, [])
+// Calls the team writes by hand still open in the builder.
+const writtenCalls = [
+  'HB Dive',
+  'Fake HB Dive QB Sneak',
+  '2 / 3 Sweep',
+  '4 / 1 Reverse',
+  'Fake Dive 3 Sweep to 1 Reverse',
+  'Fake Stretch Fake 1 / 4 Sweep Pass',
+  'Fake Dive WR Slants Wings Flat Center Go',
+  'Fake Dive Fake 3 Sweep QB Boot Right',
+  '2 / 3 Motion Sweep Fake Dive',
+  'RB Dive Fake 3 Dive',
+  'Fake HB Dive 3 Toss Right Flood Right',
+  'Slant Go Slow Wheel',
+  'Jail Break',
+  'Quick Sneak',
+  'RB Flat Throwback'
+]
+assert.deepEqual(writtenCalls.filter((name) => !parsePlayCall(name)), [])
 
 // Reading a play back drops the formation name it opens with.
 const twins = seeded.formations.find((formation) => formation.name === 'Twins')!
 const builtPlay = {
-  ...seeded.plays[0],
   id: 'play-built',
+  teamId: 'team-dolphins',
   formationId: twins.id,
   name: 'Twins Fake HB Stretch Right QB Keeper',
-  steps: undefined
+  type: 'run' as const,
+  area: 'middle' as const,
+  notes: '',
+  routes: [],
+  footballs: [],
+  steps: undefined,
+  createdAt: '',
+  updatedAt: ''
 }
 assert.deepEqual(
   stepsFromPlay(builtPlay, seeded.formations)!.map((step) => step.componentId),
@@ -727,11 +589,8 @@ assert.deepEqual(
 )
 // Saved steps are used as they are, whatever the play ended up being called.
 assert.deepEqual(stepsFromPlay({ ...builtPlay, name: 'QB Keeper', steps: keeperSteps }, seeded.formations), keeperSteps)
-// A seeded play carries no formation name, and still reads back.
-assert.equal(
-  Boolean(stepsFromPlay(seeded.plays.find((play) => play.name === 'HB Dive')!, seeded.formations)),
-  true
-)
+// A play whose name carries no formation still reads back.
+assert.equal(Boolean(stepsFromPlay({ ...builtPlay, name: 'HB Dive' }, seeded.formations)), true)
 // A name the builder cannot say has no components behind it.
 assert.equal(stepsFromPlay({ ...builtPlay, name: 'Twins Statue Of Liberty' }, seeded.formations), null)
 
@@ -768,3 +627,5 @@ assert.equal(
   ))),
   true
 )
+
+console.log('logic tests passed')

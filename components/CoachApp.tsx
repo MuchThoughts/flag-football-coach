@@ -2560,7 +2560,7 @@ function SubstitutionList({
   return (
     <div className="mt-3 rounded-lg bg-[#f7f5ee] p-3">
       <p className="text-xs font-black uppercase text-[#53665c]">
-        {label(current)} vs {label(previous)}
+        Substitutions · {label(previous)} → {label(current)}
       </p>
 
       {changes.unchanged ? (

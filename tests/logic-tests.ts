@@ -704,4 +704,55 @@ assert.equal(previousUnitDrive(order, order[1]), undefined)
 // A drive that is not in the list has nothing behind it either.
 assert.equal(previousUnitDrive(order, subDrive('stray', 'offense', 9, {})), undefined)
 
+// Each drive counts only what changed since that unit was last out, so applying
+// the bullets to the previous lineup has to land exactly on the current one.
+const roundTripCodes = OFFENSE_SLOTS.map((slot) => slot.code)
+const roundTripRoster = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k']
+let seedState = 12345
+const nextRandom = () => {
+  seedState = (seedState * 1103515245 + 12345) % 2147483648
+  return seedState / 2147483648
+}
+const randomLineup = (id: string): ResolvedDrive => {
+  const pool = [...roundTripRoster].sort(() => nextRandom() - 0.5)
+  const assignments = { ...createEmptyAssignments('offense') }
+  roundTripCodes.forEach((code, index) => {
+    assignments[code] = nextRandom() < 0.08 ? null : pool[index]
+  })
+  return resolved(createDrive(id, 'offense', 1, 'g'), assignments)
+}
+
+let roundTripFailures = 0
+for (let attempt = 0; attempt < 2000; attempt += 1) {
+  const before = randomLineup('rt-before')
+  const after = randomLineup('rt-after')
+  const changes = compareLineups(before, after)
+  const board: Record<string, string | null> = { ...before.assignments }
+
+  // Clear everyone the bullets take off the field or out of a spot.
+  changes.outs.forEach((playerId) => {
+    const slot = roundTripCodes.find((code) => board[code] === playerId)
+    if (slot) board[slot] = null
+  })
+  changes.moves.forEach((move) => {
+    board[move.from] = null
+  })
+  changes.subs.forEach((sub) => {
+    const slot = sub.playerOut ? roundTripCodes.find((code) => board[code] === sub.playerOut) : undefined
+    if (slot) board[slot] = null
+  })
+  // Then put everyone where the bullets say they end up.
+  changes.moves.forEach((move) => {
+    board[move.to] = move.playerId
+  })
+  changes.subs.forEach((sub) => {
+    board[sub.slotCode] = sub.playerIn
+  })
+
+  if (!roundTripCodes.every((code) => (board[code] || null) === (after.assignments[code] || null))) {
+    roundTripFailures += 1
+  }
+}
+assert.equal(roundTripFailures, 0)
+
 console.log('logic tests passed')

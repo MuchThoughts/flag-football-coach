@@ -65,6 +65,7 @@ import PlaybookField from '@/components/PlaybookField'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
 import { getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { snapToField, type SnapResult } from '@/lib/snapping'
+import { compareLineups, previousUnitDrive } from '@/lib/substitutions'
 import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
 import type {
   AppSettings,
@@ -868,6 +869,7 @@ export default function CoachApp() {
         ) : (
           <GamedayPage
             gameDrives={gameDrives}
+            resolvedDrives={resolvedDrives}
             selectedDrive={selectedDrive}
             selectedDriveIndex={selectedDriveIndex}
             setSelectedDriveId={setSelectedDriveId}
@@ -2524,8 +2526,89 @@ function FormationEditorSheet({
   )
 }
 
+/** What to change on the field, read against the last time this unit was out. */
+function SubstitutionList({
+  previous,
+  current,
+  lineups,
+  players
+}: {
+  previous?: ResolvedDrive
+  current: ResolvedDrive
+  lineups: Lineup[]
+  players: Player[]
+}) {
+  const name = (playerId: string) => players.find((player) => player.id === playerId)?.firstName || 'Open'
+  const label = (drive: ResolvedDrive) => {
+    const lineup = findLineup(lineups, drive)
+    return lineup ? lineupLabel(lineup) : drive.unit === 'offense' ? 'OFF' : 'DEF'
+  }
+
+  if (!previous) {
+    return (
+      <div className="mt-3 rounded-lg bg-[#f7f5ee] p-3">
+        <p className="text-xs font-black uppercase text-[#53665c]">Substitutions</p>
+        <p className="mt-1 text-sm font-bold text-[#53665c]">
+          First {current.unit} drive of the game — nothing to change yet.
+        </p>
+      </div>
+    )
+  }
+
+  const changes = compareLineups(previous, current)
+
+  return (
+    <div className="mt-3 rounded-lg bg-[#f7f5ee] p-3">
+      <p className="text-xs font-black uppercase text-[#53665c]">
+        {label(current)} vs {label(previous)}
+      </p>
+
+      {changes.unchanged ? (
+        <p className="mt-1 text-sm font-bold text-[#53665c]">Same group — nobody changes.</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {changes.subs.map((sub) => (
+            <li key={`sub-${sub.slotCode}`} className="flex gap-2 text-sm font-bold leading-snug">
+              <span aria-hidden className="text-[#1f7a4d]">•</span>
+              <span>
+                <span className="font-black">{name(sub.playerIn)}</span>
+                {sub.playerOut ? (
+                  <>
+                    {' '}in for <span className="font-black">{name(sub.playerOut)}</span>
+                  </>
+                ) : (
+                  ' in'
+                )}{' '}
+                at <span className="font-black">{sub.slotCode}</span>
+              </span>
+            </li>
+          ))}
+          {changes.moves.map((move) => (
+            <li key={`move-${move.playerId}`} className="flex gap-2 text-sm font-bold leading-snug">
+              <span aria-hidden className="text-[#1f7a4d]">•</span>
+              <span>
+                <span className="font-black">{name(move.playerId)}</span> moves from{' '}
+                <span className="font-black">{move.from}</span> to <span className="font-black">{move.to}</span>
+              </span>
+            </li>
+          ))}
+          {changes.outs.map((playerId) => (
+            <li key={`out-${playerId}`} className="flex gap-2 text-sm font-bold leading-snug">
+              <span aria-hidden className="text-[#c2412d]">•</span>
+              <span>
+                <span className="font-black">{name(playerId)}</span> comes off
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 function GamedayPage({
   gameDrives,
+  resolvedDrives,
   selectedDrive,
   selectedDriveIndex,
   setSelectedDriveId,
@@ -2549,6 +2632,7 @@ function GamedayPage({
   availability
 }: {
   gameDrives: Drive[]
+  resolvedDrives: ResolvedDrive[]
   selectedDrive?: Drive
   selectedDriveIndex: number
   setSelectedDriveId: (id: string) => void
@@ -2659,6 +2743,12 @@ function GamedayPage({
               slotPositions={slotPositions}
               availability={availability}
               compact
+            />
+            <SubstitutionList
+              previous={previousUnitDrive(resolvedDrives, selectedResolvedDrive)}
+              current={selectedResolvedDrive}
+              lineups={lineups}
+              players={players}
             />
           </>
         )}

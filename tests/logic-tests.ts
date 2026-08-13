@@ -40,6 +40,7 @@ import {
   slotPositionKey
 } from '../lib/positions'
 import { snapToField } from '../lib/snapping'
+import { compareLineups, previousUnitDrive } from '../lib/substitutions'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
@@ -627,5 +628,80 @@ assert.equal(
   ))),
   true
 )
+
+// ---- Substitutions ----
+const subDrive = (id: string, unit: 'offense' | 'defense', n: number, assignments: Record<string, string | null>) =>
+  resolved(createDrive(id, unit, n, 'g'), assignments)
+
+const offOne = subDrive('s-off-1', 'offense', 1, {
+  QB: 'p-rhett', C: 'p-teddy', RB: 'p-mikey', '1': 'p-dodger', '2': 'p-maddox', '3': 'p-william', '4': 'p-grady'
+})
+
+// Nothing moved.
+assert.equal(compareLineups(offOne, { ...offOne, id: 's-off-2' }).unchanged, true)
+
+// Two straight swaps: someone off the field comes on for whoever held the spot.
+const twoSwaps = compareLineups(
+  offOne,
+  subDrive('s-off-2', 'offense', 2, {
+    QB: 'p-rhett', C: 'p-teddy', RB: 'p-mikey', '1': 'p-dodger', '2': 'p-locklan', '3': 'p-william', '4': 'p-luther'
+  })
+)
+assert.equal(twoSwaps.unchanged, false)
+assert.deepEqual(twoSwaps.subs, [
+  { slotCode: '2', playerIn: 'p-locklan', playerOut: 'p-maddox' },
+  { slotCode: '4', playerIn: 'p-luther', playerOut: 'p-grady' }
+])
+assert.deepEqual(twoSwaps.moves, [])
+assert.deepEqual(twoSwaps.outs, [])
+
+// Someone already on the field changing spots is a move, not a substitution.
+const moved = compareLineups(
+  offOne,
+  subDrive('s-off-2', 'offense', 2, {
+    QB: 'p-rhett', C: 'p-teddy', RB: 'p-mikey', '1': 'p-dodger', '2': 'p-william', '3': 'p-maddox', '4': 'p-grady'
+  })
+)
+assert.deepEqual(moved.subs, [])
+assert.deepEqual(moved.moves, [
+  { playerId: 'p-william', from: '3', to: '2' },
+  { playerId: 'p-maddox', from: '2', to: '3' }
+])
+assert.deepEqual(moved.outs, [])
+
+// A player moving into someone else's spot leaves that someone unaccounted for,
+// so they get called off on their own line.
+const shuffled = compareLineups(
+  offOne,
+  subDrive('s-off-2', 'offense', 2, {
+    QB: 'p-rhett', C: 'p-teddy', RB: 'p-mikey', '1': 'p-dodger', '2': 'p-grady', '3': 'p-william', '4': 'p-henry'
+  })
+)
+// Grady held the 4 spot but is still on the field, so Henry is not "in for" him.
+assert.deepEqual(shuffled.subs, [{ slotCode: '4', playerIn: 'p-henry', playerOut: null }])
+assert.deepEqual(shuffled.moves, [{ playerId: 'p-grady', from: '4', to: '2' }])
+assert.deepEqual(shuffled.outs, ['p-maddox'])
+
+// An open spot being filled names nobody on the way out.
+const filledOpen = compareLineups(
+  subDrive('s-off-1', 'offense', 1, { QB: 'p-rhett', C: null }),
+  subDrive('s-off-2', 'offense', 2, { QB: 'p-rhett', C: 'p-teddy' })
+)
+assert.deepEqual(filledOpen.subs, [{ slotCode: 'C', playerIn: 'p-teddy', playerOut: null }])
+
+// The comparison is against the last time this unit was out, not the last drive.
+const order = [
+  subDrive('d1', 'offense', 1, { QB: 'p-rhett' }),
+  subDrive('d2', 'defense', 1, { R: 'p-teddy' }),
+  subDrive('d3', 'offense', 2, { QB: 'p-mikey' }),
+  subDrive('d4', 'defense', 2, { R: 'p-grady' })
+]
+assert.equal(previousUnitDrive(order, order[2])?.id, 'd1')
+assert.equal(previousUnitDrive(order, order[3])?.id, 'd2')
+// The first drive of each unit has nothing behind it.
+assert.equal(previousUnitDrive(order, order[0]), undefined)
+assert.equal(previousUnitDrive(order, order[1]), undefined)
+// A drive that is not in the list has nothing behind it either.
+assert.equal(previousUnitDrive(order, subDrive('stray', 'offense', 9, {})), undefined)
 
 console.log('logic tests passed')

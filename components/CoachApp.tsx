@@ -90,6 +90,8 @@ type SyncStatus = 'local' | 'loading' | 'synced' | 'saving' | 'error'
 
 const storageKey = 'flag-football-coach:v3'
 const legacyStorageKeys = ['flag-football-coach:v2', 'flag-football-coach:v1']
+/** An untouched copy of this device's data from before it first joined the cloud. */
+const preSyncBackupKey = 'flag-football-coach:pre-sync-backup'
 const resultOptions: Array<Exclude<DriveResult, ''>> = ['TD', 'Stop', 'Turnover', 'Punt', 'End Half', 'End Game']
 const conversionOptions: Array<{ value: Conversion; label: string }> = [
   { value: '', label: 'None' },
@@ -284,13 +286,24 @@ export default function CoachApp() {
     }, 500)
   }
 
-  /** Join the one shared dataset: read it if it exists, seed it if not. */
+  /**
+   * Join the one shared dataset: read it if it exists, seed it if not.
+   *
+   * Adopting the shared data replaces whatever this device was holding, so the
+   * first time that happens the old contents are kept aside. The backup is
+   * written once and never overwritten, so it always holds what this device had
+   * before it ever joined the cloud.
+   */
   async function hydrateSharedState(seedState: AppState) {
     setSyncStatus('loading')
     setSyncMessage('Loading team data')
 
     const snapshot = await loadSharedState()
     if (snapshot?.state) {
+      const existing = window.localStorage.getItem(storageKey)
+      if (existing && !window.localStorage.getItem(preSyncBackupKey)) {
+        window.localStorage.setItem(preSyncBackupKey, existing)
+      }
       applyRemoteState(snapshot.state)
     } else {
       await saveSharedState(seedState, deviceIdRef.current)

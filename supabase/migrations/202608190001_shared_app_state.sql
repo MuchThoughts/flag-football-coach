@@ -1,7 +1,9 @@
 -- One shared dataset for the whole coaching staff: no accounts, no sign-in.
 -- Every device reads, writes and listens to a single row.
 --
--- Safe to run more than once.
+-- Safe to run more than once. It creates the table but deliberately does NOT
+-- copy any old data in: see 202608190002_seed_shared_state.sql for that, which
+-- asks you to name the team to copy rather than guessing.
 
 create table if not exists shared_app_state (
   id text primary key,
@@ -41,23 +43,6 @@ begin
       and tablename = 'shared_app_state'
   ) then
     alter publication supabase_realtime add table shared_app_state;
-  end if;
-end
-$$;
-
--- Seed the shared row from the newest of the old per-team snapshots, so the
--- data the coach has been syncing carries straight over. Projects that never
--- had the account-based tables simply start empty and seed from the first
--- device that opens the app.
-do $$
-begin
-  if to_regclass('public.app_state_snapshots') is not null then
-    insert into shared_app_state (id, state, updated_by, updated_at)
-    select 'franklin-dolphins', state, 'migration', updated_at
-    from app_state_snapshots
-    order by updated_at desc
-    limit 1
-    on conflict (id) do nothing;
   end if;
 end
 $$;

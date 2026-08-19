@@ -20,9 +20,7 @@ sign-in. Every device that opens the app reads and writes the same team data
 and receives everyone else's changes live.
 
 1. Create a Supabase project.
-2. Run `supabase/migrations/202608190001_shared_app_state.sql` in the Supabase SQL editor.
-   (`supabase/schema.sql` holds the older account-based schema; the shared
-   dataset does not need it.)
+2. Run `supabase/migrations/202608190001_shared_app_state.sql` in the SQL editor.
 3. Create `.env.local` from `.env.example`:
 
 ```env
@@ -35,6 +33,23 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
 
 Anyone with the app URL shares the data — that is the point, so only hand the
 URL to the coaching staff.
+
+### Filling the shared dataset the first time
+
+The shared row starts empty, and **the first device to open the app publishes
+whatever it is holding**. So open the app on the device whose data you want to
+keep before handing the URL to anyone else. Every device that opens afterwards
+adopts the shared data.
+
+Before a device adopts shared data for the first time it copies its own
+contents to `flag-football-coach:pre-sync-backup` in `localStorage` and never
+overwrites that copy, so the state it held beforehand stays recoverable.
+
+If you would rather seed from an old account-based snapshot than from a phone,
+`supabase/migrations/202608190002_seed_shared_state.sql` walks through it. It
+asks you to identify the team first rather than guessing, because every device
+that ever signed up got its own team and the newest snapshot is often an
+untouched one.
 
 ## Verification
 

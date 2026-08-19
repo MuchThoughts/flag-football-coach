@@ -48,6 +48,15 @@ export function normalizeAppStateForSupabase(state: AppState): AppState {
   }
 }
 
+/**
+ * A project that has not had the migration run yet reports a missing table.
+ * That is a setup step, not a fault, so say so instead of leaking Postgres.
+ */
+function describeError(error: { code?: string; message?: string }) {
+  const missingTable = error.code === '42P01' || error.code === 'PGRST205' || /shared_app_state/.test(error.message || '')
+  return new Error(missingTable ? 'Run the shared-state migration in Supabase' : error.message || 'Supabase request failed')
+}
+
 export async function loadSharedState(): Promise<SharedStateRow | null> {
   const supabase = getSupabaseClient()
   const { data, error } = await supabase
@@ -57,7 +66,7 @@ export async function loadSharedState(): Promise<SharedStateRow | null> {
     .maybeSingle<SharedStateRow>()
 
   if (error) {
-    throw error
+    throw describeError(error)
   }
 
   return data
@@ -73,7 +82,7 @@ export async function saveSharedState(state: AppState, deviceId: string) {
   })
 
   if (error) {
-    throw error
+    throw describeError(error)
   }
 }
 

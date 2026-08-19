@@ -108,7 +108,8 @@ export const initialAppState: AppState = {
       date: '',
       location: '',
       status: 'scheduled',
-      patternLength: 3
+      patternLength: 3,
+      startingUnit: 'offense'
     }
   ],
   selectedGameId: gameId,

@@ -52,6 +52,8 @@ export interface Game {
   location: string
   status: 'scheduled' | 'in_progress' | 'completed'
   patternLength: number
+  /** Which unit takes the field for the first drive. */
+  startingUnit: Unit
 }
 
 export interface DriveNote {

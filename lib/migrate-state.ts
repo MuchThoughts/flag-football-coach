@@ -54,7 +54,8 @@ function normalizeGame(game: Game, index: number): Game {
     date: game.date || '',
     location: game.location || '',
     status: game.status || 'scheduled',
-    patternLength: game.patternLength || 3
+    patternLength: game.patternLength || 3,
+    startingUnit: game.startingUnit === 'defense' ? 'defense' : 'offense'
   }
 }
 

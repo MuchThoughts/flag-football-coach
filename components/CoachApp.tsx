@@ -65,7 +65,7 @@ import PlaybookField from '@/components/PlaybookField'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
 import { getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { snapToField, type SnapResult } from '@/lib/snapping'
-import { compareLineups, previousUnitDrive } from '@/lib/substitutions'
+import { compareLineups, previousDrive } from '@/lib/substitutions'
 import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
 import type {
   AppSettings,
@@ -105,8 +105,8 @@ function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function driveSortValue(drive: Drive) {
-  return drive.driveNumber * 10 + (drive.unit === 'offense' ? 0 : 1)
+function driveSortValue(drive: Drive, startingUnit: Unit) {
+  return drive.driveNumber * 10 + (drive.unit === startingUnit ? 0 : 1)
 }
 
 function emptyNote(): DriveNote {
@@ -180,9 +180,10 @@ export default function CoachApp() {
   const applyingRemoteStateRef = useRef(false)
 
   const selectedGame = games.find((game) => game.id === selectedGameId) || games[0]
+  const startingUnit: Unit = selectedGame?.startingUnit || 'offense'
   const gameDrives = drives
     .filter((drive) => drive.gameId === selectedGame?.id)
-    .sort((a, b) => driveSortValue(a) - driveSortValue(b))
+    .sort((a, b) => driveSortValue(a, startingUnit) - driveSortValue(b, startingUnit))
   const resolvedDrives = resolveDrives(gameDrives, lineups)
   const selectedDrive = gameDrives.find((drive) => drive.id === selectedDriveId) || gameDrives[0]
   const selectedResolvedDrive = resolvedDrives.find((drive) => drive.id === selectedDrive?.id)
@@ -493,7 +494,7 @@ export default function CoachApp() {
    * Starts a named game. Lineups carry over from the current game, results and
    * notes do not, and the old game stays put so it can be reopened later.
    */
-  function startNewGame(name: string) {
+  function startNewGame(name: string, gameStartingUnit: Unit = 'offense') {
     const game: Game = {
       id: uid('game'),
       teamId: team.id,
@@ -501,7 +502,8 @@ export default function CoachApp() {
       date: new Date().toISOString().slice(0, 10),
       location: '',
       status: 'scheduled',
-      patternLength: selectedGame?.patternLength || 3
+      patternLength: selectedGame?.patternLength || 3,
+      startingUnit: gameStartingUnit
     }
 
     // Lineups belong to the team, so a new game only needs fresh drives pointing at them.
@@ -521,8 +523,16 @@ export default function CoachApp() {
     setDrives((items) => [...items, ...carriedDrives])
     setAvailabilityByGame((current) => ({ ...current, [game.id]: {} }))
     setSelectedGameId(game.id)
-    setSelectedDriveId(carriedDrives[0]?.id || '')
+    const firstDrive = [...carriedDrives].sort(
+      (a, b) => driveSortValue(a, game.startingUnit) - driveSortValue(b, game.startingUnit)
+    )[0]
+    setSelectedDriveId(firstDrive?.id || '')
     setGameNoteDraft('')
+  }
+
+  /** Flip whether this game opens on offense or defense. */
+  function setGameStartingUnit(gameId: string, unit: Unit) {
+    setGames((items) => items.map((game) => (game.id === gameId ? { ...game, startingUnit: unit } : game)))
   }
 
   /** Drops a saved game and everything recorded in it. The last game always stays. */
@@ -543,7 +553,7 @@ export default function CoachApp() {
       const nextGame = remaining[remaining.length - 1]
       const nextDrive = drives
         .filter((drive) => drive.gameId === nextGame.id)
-        .sort((a, b) => driveSortValue(a) - driveSortValue(b))[0]
+        .sort((a, b) => driveSortValue(a, nextGame.startingUnit) - driveSortValue(b, nextGame.startingUnit))[0]
       setSelectedGameId(nextGame.id)
       setSelectedDriveId(nextDrive?.id || '')
       setGameNoteDraft('')
@@ -886,6 +896,8 @@ export default function CoachApp() {
             setDriveLineup={setDriveLineup}
             selectedResolvedDrive={selectedResolvedDrive}
             startNewGame={startNewGame}
+            startingUnit={startingUnit}
+            setStartingUnit={(unit) => selectedGame && setGameStartingUnit(selectedGame.id, unit)}
             deleteGame={() => selectedGame && deleteGame(selectedGame.id)}
             gameName={selectedGame?.name || ''}
             gameCount={games.length}
@@ -2548,12 +2560,12 @@ function SubstitutionList({
     return (
       <div className="mt-3 rounded-lg bg-[#f7f5ee] p-3">
         <p className="text-xs font-black uppercase text-[#53665c]">Substitutions</p>
-        <p className="mt-1 text-sm font-bold text-[#53665c]">
-          First {current.unit} drive of the game — nothing to change yet.
-        </p>
+        <p className="mt-1 text-sm font-bold text-[#53665c]">First drive of the game — nothing to change yet.</p>
       </div>
     )
   }
+
+  const crossUnit = previous.unit !== current.unit
 
   const changes = compareLineups(previous, current)
 
@@ -2564,7 +2576,9 @@ function SubstitutionList({
       </p>
 
       {changes.unchanged ? (
-        <p className="mt-1 text-sm font-bold text-[#53665c]">Same group — nobody changes.</p>
+        <p className="mt-1 text-sm font-bold text-[#53665c]">
+          {crossUnit ? 'Same group stays on the field.' : 'Same group — nobody changes.'}
+        </p>
       ) : (
         <ul className="mt-2 space-y-1.5">
           {changes.subs.map((sub) => (
@@ -2609,6 +2623,8 @@ function SubstitutionList({
 function GamedayPage({
   gameDrives,
   resolvedDrives,
+  startingUnit,
+  setStartingUnit,
   selectedDrive,
   selectedDriveIndex,
   setSelectedDriveId,
@@ -2648,7 +2664,9 @@ function GamedayPage({
   lineups: Lineup[]
   setDriveLineup: (driveId: string, lineupId: string) => void
   selectedResolvedDrive?: ResolvedDrive
-  startNewGame: (name: string) => void
+  startNewGame: (name: string, startingUnit: Unit) => void
+  startingUnit: Unit
+  setStartingUnit: (unit: Unit) => void
   deleteGame: () => void
   gameName: string
   gameCount: number
@@ -2692,6 +2710,22 @@ function GamedayPage({
             <RotateCcw size={15} />
             New Game
           </button>
+          <div className="flex items-center gap-1 rounded-lg bg-white/10 p-1 ring-1 ring-white/20">
+            <span className="px-1.5 text-[10px] font-black uppercase text-white/60">Start on</span>
+            {(['offense', 'defense'] as const).map((unit) => (
+              <button
+                key={unit}
+                type="button"
+                onClick={() => setStartingUnit(unit)}
+                aria-pressed={startingUnit === unit}
+                className={`rounded-md px-2 py-1 text-xs font-black uppercase ${
+                  startingUnit === unit ? 'bg-[#f7c948] text-[#10201a]' : 'text-white/70'
+                }`}
+              >
+                {unit === 'offense' ? 'Off' : 'Def'}
+              </button>
+            ))}
+          </div>
         </div>
         <p className="mt-2 text-xs font-bold text-white/60">New Game starts a fresh scoresheet and carries your lineups over.</p>
       </section>
@@ -2699,8 +2733,8 @@ function GamedayPage({
       {namingGame && (
         <NewGameSheet
           defaultName={`Game ${gameCount + 1}`}
-          onCreate={(name) => {
-            startNewGame(name)
+          onCreate={(name, unit) => {
+            startNewGame(name, unit)
             setNamingGame(false)
           }}
           onClose={() => setNamingGame(false)}
@@ -2745,7 +2779,7 @@ function GamedayPage({
               compact
             />
             <SubstitutionList
-              previous={previousUnitDrive(resolvedDrives, selectedResolvedDrive)}
+              previous={previousDrive(resolvedDrives, selectedResolvedDrive)}
               current={selectedResolvedDrive}
               lineups={lineups}
               players={players}
@@ -3051,10 +3085,11 @@ function NewGameSheet({
   onClose
 }: {
   defaultName: string
-  onCreate: (name: string) => void
+  onCreate: (name: string, startingUnit: Unit) => void
   onClose: () => void
 }) {
   const [name, setName] = useState(defaultName)
+  const [startingUnit, setStartingUnit] = useState<Unit>('offense')
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
@@ -3068,17 +3103,36 @@ function NewGameSheet({
           value={name}
           onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === 'Enter') onCreate(name)
+            if (event.key === 'Enter') onCreate(name, startingUnit)
             if (event.key === 'Escape') onClose()
           }}
           placeholder="Game name"
           className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
         />
+        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">First drive</p>
+        <div className="mt-1 grid grid-cols-2 gap-2">
+          {(['offense', 'defense'] as const).map((unit) => (
+            <button
+              key={unit}
+              type="button"
+              onClick={() => setStartingUnit(unit)}
+              className={`rounded-lg border px-3 py-3 font-black capitalize ${
+                startingUnit === unit ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
+              }`}
+            >
+              {unit}
+            </button>
+          ))}
+        </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
             Cancel
           </button>
-          <button type="button" onClick={() => onCreate(name)} className="rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
+          <button
+            type="button"
+            onClick={() => onCreate(name, startingUnit)}
+            className="rounded-lg bg-[#10201a] px-3 py-3 font-black text-white"
+          >
             Start Game
           </button>
         </div>

@@ -39,11 +39,27 @@ function slotOf(assignments: Record<string, string | null>, playerId: string) {
  * Reads one lineup against another. Someone new to the field is a substitution,
  * someone on both sides in a different spot has moved, and anyone who comes off
  * without a direct replacement is called out on their own.
+ *
+ * Across a change of unit — offense coming off, defense going out — everyone's
+ * position is new by definition, so only who enters and who leaves is worth
+ * calling: whoever stays on the field is visible on the board above.
  */
 export function compareLineups(previous: ResolvedDrive, current: ResolvedDrive): LineupChanges {
   const slots = SLOTS_BY_UNIT[current.unit]
   const before = previous.assignments
   const after = current.assignments
+
+  if (previous.unit !== current.unit) {
+    const previousField = new Set(Object.values(before).filter(Boolean) as string[])
+    const currentField = new Set(Object.values(after).filter(Boolean) as string[])
+
+    const subs: Substitution[] = slots
+      .filter((slot) => after[slot.code] && !previousField.has(after[slot.code]!))
+      .map((slot) => ({ slotCode: slot.code, playerIn: after[slot.code]!, playerOut: null }))
+    const outs = Array.from(previousField).filter((playerId) => !currentField.has(playerId))
+
+    return { subs, moves: [], outs, unchanged: subs.length === 0 && outs.length === 0 }
+  }
 
   const wasOn = (playerId: string) => Boolean(slotOf(before, playerId))
   const isOn = (playerId: string) => Boolean(slotOf(after, playerId))
@@ -89,16 +105,8 @@ export function compareLineups(previous: ResolvedDrive, current: ResolvedDrive):
   }
 }
 
-/** The last time this unit was on the field before the given drive. */
-export function previousUnitDrive(drives: ResolvedDrive[], drive: ResolvedDrive): ResolvedDrive | undefined {
+/** Whatever was on the field right before this drive, either unit. */
+export function previousDrive(drives: ResolvedDrive[], drive: ResolvedDrive): ResolvedDrive | undefined {
   const index = drives.findIndex((item) => item.id === drive.id)
-  if (index < 0) return undefined
-
-  for (let position = index - 1; position >= 0; position -= 1) {
-    if (drives[position].unit === drive.unit) {
-      return drives[position]
-    }
-  }
-
-  return undefined
+  return index > 0 ? drives[index - 1] : undefined
 }

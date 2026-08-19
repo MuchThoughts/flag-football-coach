@@ -40,7 +40,7 @@ import {
   slotPositionKey
 } from '../lib/positions'
 import { snapToField } from '../lib/snapping'
-import { compareLineups, previousUnitDrive } from '../lib/substitutions'
+import { compareLineups, previousDrive } from '../lib/substitutions'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
@@ -300,6 +300,15 @@ const preNamedGames = migrateAppState({
 } as unknown as typeof initialAppState)
 assert.equal(preNamedGames.games[0].name, 'Game 1')
 assert.equal(preNamedGames.games[1].name, 'Game 2')
+// Games saved before the kickoff choice existed start on offense.
+assert.equal(preNamedGames.games[0].startingUnit, 'offense')
+assert.equal(
+  migrateAppState({
+    ...initialAppState,
+    games: [{ ...initialAppState.games[0], startingUnit: 'defense' }]
+  } as unknown as typeof initialAppState).games[0].startingUnit,
+  'defense'
+)
 assert.equal(preNamedGames.drives[0].conversion, '')
 // Every drive points at one of the eight lineups.
 assert.equal(Boolean(findLineup(preNamedGames.lineups, preNamedGames.drives[0])), true)
@@ -689,20 +698,45 @@ const filledOpen = compareLineups(
 )
 assert.deepEqual(filledOpen.subs, [{ slotCode: 'C', playerIn: 'p-teddy', playerOut: null }])
 
-// The comparison is against the last time this unit was out, not the last drive.
+// The comparison is against whatever ran last, whichever unit that was.
 const order = [
   subDrive('d1', 'offense', 1, { QB: 'p-rhett' }),
   subDrive('d2', 'defense', 1, { R: 'p-teddy' }),
   subDrive('d3', 'offense', 2, { QB: 'p-mikey' }),
   subDrive('d4', 'defense', 2, { R: 'p-grady' })
 ]
-assert.equal(previousUnitDrive(order, order[2])?.id, 'd1')
-assert.equal(previousUnitDrive(order, order[3])?.id, 'd2')
-// The first drive of each unit has nothing behind it.
-assert.equal(previousUnitDrive(order, order[0]), undefined)
-assert.equal(previousUnitDrive(order, order[1]), undefined)
+assert.equal(previousDrive(order, order[1])?.id, 'd1')
+assert.equal(previousDrive(order, order[2])?.id, 'd2')
+assert.equal(previousDrive(order, order[3])?.id, 'd3')
+// The first drive of the game has nothing behind it.
+assert.equal(previousDrive(order, order[0]), undefined)
 // A drive that is not in the list has nothing behind it either.
-assert.equal(previousUnitDrive(order, subDrive('stray', 'offense', 9, {})), undefined)
+assert.equal(previousDrive(order, subDrive('stray', 'offense', 9, {})), undefined)
+
+// Across a change of unit, only who enters and who leaves is called: everyone
+// staying on the field has a new position by definition.
+const offField = subDrive('x-off', 'offense', 1, {
+  QB: 'p-rhett', C: 'p-teddy', RB: 'p-mikey', '1': 'p-dodger', '2': 'p-maddox', '3': 'p-william', '4': 'p-grady'
+})
+const defField = subDrive('x-def', 'defense', 1, {
+  LE: 'p-teddy', R: 'p-rhett', RE: 'p-mikey', LCB: 'p-dodger', MLB: 'p-locklan', RCB: 'p-luther', S: 'p-grady'
+})
+const unitSwitch = compareLineups(offField, defField)
+assert.deepEqual(unitSwitch.subs, [
+  { slotCode: 'MLB', playerIn: 'p-locklan', playerOut: null },
+  { slotCode: 'RCB', playerIn: 'p-luther', playerOut: null }
+])
+assert.deepEqual(unitSwitch.moves, [])
+assert.deepEqual(unitSwitch.outs, ['p-maddox', 'p-william'])
+
+// The same seven staying out for the other unit is a quiet change.
+const sameSeven = compareLineups(
+  offField,
+  subDrive('x-def-2', 'defense', 1, {
+    LE: 'p-teddy', R: 'p-rhett', RE: 'p-mikey', LCB: 'p-dodger', MLB: 'p-maddox', RCB: 'p-william', S: 'p-grady'
+  })
+)
+assert.equal(sameSeven.unchanged, true)
 
 // Each drive counts only what changed since that unit was last out, so applying
 // the bullets to the previous lineup has to land exactly on the current one.

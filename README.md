@@ -15,40 +15,26 @@ The app works local-first with `localStorage` when Supabase is not configured.
 
 ## Supabase Setup
 
+Sync is one shared dataset for the whole coaching staff: no accounts and no
+sign-in. Every device that opens the app reads and writes the same team data
+and receives everyone else's changes live.
+
 1. Create a Supabase project.
-2. Run `supabase/schema.sql` in the Supabase SQL editor.
+2. Run `supabase/migrations/202608190001_shared_app_state.sql` in the Supabase SQL editor.
+   (`supabase/schema.sql` holds the older account-based schema; the shared
+   dataset does not need it.)
 3. Create `.env.local` from `.env.example`:
 
 ```env
 NEXT_PUBLIC_SUPABASE_URL=your_project_url
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your_publishable_key
-NEXT_PUBLIC_ENABLE_ASSISTANT_INVITES=false
 ```
 
-4. Restart the dev server.
-5. Go to `More > Supabase` to create an account or sign in.
+4. Restart the dev server. The cloud badge in the header shows the sync state,
+   with manual Save and Refresh under it.
 
-## Assistant Coaches
-
-Assistant invites are optional and hidden by default. Enable them by setting:
-
-```env
-NEXT_PUBLIC_ENABLE_ASSISTANT_INVITES=true
-```
-
-Head coaches can then create assistant invite codes from `More > Supabase`.
-
-1. Sign in as the head coach.
-2. Enter the assistant email.
-3. Choose whether they can add notes or advance drives.
-4. Create an invite code and send it to the assistant.
-5. The assistant signs in, opens `More > Supabase`, enters the code under `Join Team`, and accepts.
-
-If your database was created before assistant invites existed, run:
-
-```text
-supabase/migrations/202606130001_assistant_invites.sql
-```
+Anyone with the app URL shares the data — that is the point, so only hand the
+URL to the coaching staff.
 
 ## Verification
 

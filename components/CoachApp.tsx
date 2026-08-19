@@ -8,8 +8,6 @@ import {
   ChevronDown,
   Cloud,
   Copy,
-  LogIn,
-  LogOut,
   Minimize2,
   Plus,
   RotateCcw,
@@ -19,12 +17,10 @@ import {
   X
 } from 'lucide-react'
 import {
-  appSettingsFromMembership,
-  ensureSupabaseMembership,
-  loadSupabaseState,
-  saveSupabaseState,
-  subscribeToSupabaseState,
-  type SupabaseMembership
+  getDeviceId,
+  loadSharedState,
+  saveSharedState,
+  subscribeToSharedState
 } from '@/lib/supabase/app-state'
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import {
@@ -90,7 +86,7 @@ import type {
 } from '@/lib/types'
 
 type Workflow = 'planning' | 'gameday' | 'playbook' | 'play-builder'
-type SyncStatus = 'local' | 'signed_out' | 'loading' | 'synced' | 'saving' | 'error'
+type SyncStatus = 'local' | 'loading' | 'synced' | 'saving' | 'error'
 
 const storageKey = 'flag-football-coach:v3'
 const legacyStorageKeys = ['flag-football-coach:v2', 'flag-football-coach:v1']
@@ -168,16 +164,12 @@ export default function CoachApp() {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null)
   const [draggingPlayerId, setDraggingPlayerId] = useState<string | null>(null)
   const [gameNoteDraft, setGameNoteDraft] = useState('')
-  const [authForm, setAuthForm] = useState({ email: '', password: '' })
   const [syncStatus, setSyncStatus] = useState<SyncStatus>(isSupabaseConfigured() ? 'loading' : 'local')
   const [syncMessage, setSyncMessage] = useState(isSupabaseConfigured() ? 'Checking session' : 'Local only')
-  const [syncUserId, setSyncUserId] = useState<string | null>(null)
-  const [syncUserEmail, setSyncUserEmail] = useState('')
-  const [syncTeamId, setSyncTeamId] = useState<string | null>(null)
-  const [syncMembership, setSyncMembership] = useState<SupabaseMembership | null>(null)
   const [syncReady, setSyncReady] = useState(false)
   const saveTimerRef = useRef<number | null>(null)
   const applyingRemoteStateRef = useRef(false)
+  const deviceIdRef = useRef('')
 
   const selectedGame = games.find((game) => game.id === selectedGameId) || games[0]
   const startingUnit: Unit = selectedGame?.startingUnit || 'offense'
@@ -258,14 +250,21 @@ export default function CoachApp() {
     }
   }
 
-  function applyAppState(incoming: AppState, membership = syncMembership) {
+  function applyAppState(incoming: AppState, options: { keepSelection?: boolean } = {}) {
     const saved = migrateAppState(incoming)
     setTeam(saved.team)
     setPlayers(saved.players)
     setGames(saved.games)
-    setSelectedGameId(saved.selectedGameId)
     setDrives(saved.drives)
-    setSelectedDriveId(saved.selectedDriveId)
+    // Which game and drive are on screen stays a device-local choice, so one
+    // coach paging through drives does not flip everyone else's screen.
+    if (options.keepSelection) {
+      setSelectedGameId((current) => (saved.games.some((game) => game.id === current) ? current : saved.selectedGameId))
+      setSelectedDriveId((current) => (saved.drives.some((drive) => drive.id === current) ? current : saved.selectedDriveId))
+    } else {
+      setSelectedGameId(saved.selectedGameId)
+      setSelectedDriveId(saved.selectedDriveId)
+    }
     setAvailabilityByGame(saved.availabilityByGame)
     setPractices(saved.practices)
     setPracticeTemplates(saved.practiceTemplates)
@@ -274,42 +273,42 @@ export default function CoachApp() {
     setPlaybookSeed(saved.playbookSeed)
     setLineups(saved.lineups)
     setSlotPositions(saved.slotPositions)
-    setAppSettings(membership ? appSettingsFromMembership(membership, saved.appSettings) : saved.appSettings)
+    setAppSettings(saved.appSettings)
   }
 
-  async function hydrateSupabaseSession(userId: string, userEmail: string, seedState: AppState) {
+  function applyRemoteState(incoming: AppState) {
+    applyingRemoteStateRef.current = true
+    applyAppState(incoming, { keepSelection: true })
+    window.setTimeout(() => {
+      applyingRemoteStateRef.current = false
+    }, 500)
+  }
+
+  /** Join the one shared dataset: read it if it exists, seed it if not. */
+  async function hydrateSharedState(seedState: AppState) {
     setSyncStatus('loading')
-    setSyncMessage('Loading cloud data')
+    setSyncMessage('Loading team data')
 
-    const membership = await ensureSupabaseMembership(seedState, userId)
-    setSyncUserId(userId)
-    setSyncUserEmail(userEmail)
-    setSyncTeamId(membership.teamId)
-    setSyncMembership(membership)
-
-    const snapshot = await loadSupabaseState(membership.teamId)
+    const snapshot = await loadSharedState()
     if (snapshot?.state) {
-      applyingRemoteStateRef.current = true
-      applyAppState(snapshot.state, membership)
-      window.setTimeout(() => {
-        applyingRemoteStateRef.current = false
-      }, 500)
+      applyRemoteState(snapshot.state)
     } else {
-      await saveSupabaseState(membership.teamId, seedState, userId)
+      await saveSharedState(seedState, deviceIdRef.current)
     }
 
     setSyncReady(true)
     setSyncStatus('synced')
-    setSyncMessage('Cloud sync active')
+    setSyncMessage('Shared with the whole staff')
   }
 
   useEffect(() => {
+    deviceIdRef.current = getDeviceId()
     const raw =
       window.localStorage.getItem(storageKey) ||
       legacyStorageKeys.map((key) => window.localStorage.getItem(key)).find(Boolean)
     if (raw) {
       try {
-        applyAppState(JSON.parse(raw) as AppState, null)
+        applyAppState(JSON.parse(raw) as AppState)
       } catch {
         window.localStorage.removeItem(storageKey)
       }
@@ -330,23 +329,13 @@ export default function CoachApp() {
 
     async function initializeSupabase() {
       try {
-        const supabase = getSupabaseClient()
-        const { data, error } = await supabase.auth.getSession()
-        if (error) throw error
-
-        if (!data.session?.user) {
-          setSyncStatus('signed_out')
-          setSyncMessage('Signed out')
-          return
-        }
-
         if (!canceled) {
-          await hydrateSupabaseSession(data.session.user.id, data.session.user.email || '', getCurrentState())
+          await hydrateSharedState(getCurrentState())
         }
       } catch (error) {
         if (!canceled) {
           setSyncStatus('error')
-          setSyncMessage(error instanceof Error ? error.message : 'Supabase session failed')
+          setSyncMessage(error instanceof Error ? error.message : 'Cloud load failed')
         }
       }
     }
@@ -363,7 +352,7 @@ export default function CoachApp() {
     const state = getCurrentState()
     window.localStorage.setItem(storageKey, JSON.stringify(state))
 
-    if (!isSupabaseConfigured() || !syncReady || !syncTeamId || !syncUserId || applyingRemoteStateRef.current) {
+    if (!isSupabaseConfigured() || !syncReady || applyingRemoteStateRef.current) {
       return
     }
 
@@ -374,10 +363,10 @@ export default function CoachApp() {
     setSyncStatus('saving')
     setSyncMessage('Saving')
     saveTimerRef.current = window.setTimeout(() => {
-      saveSupabaseState(syncTeamId, state, syncUserId)
+      saveSharedState(state, deviceIdRef.current)
         .then(() => {
           setSyncStatus('synced')
-          setSyncMessage('Cloud sync active')
+          setSyncMessage('Shared with the whole staff')
         })
         .catch((error) => {
           setSyncStatus('error')
@@ -387,23 +376,21 @@ export default function CoachApp() {
   }, [appSettings, availabilityByGame, drives, formations, games, lineups, loaded, players, plays, practiceTemplates, practices, playbookSeed, selectedDriveId, selectedGameId, slotPositions, team])
 
   useEffect(() => {
-    if (!syncReady || !syncTeamId || !syncUserId) return
+    if (!syncReady) return
 
-    const channel = subscribeToSupabaseState(syncTeamId, (row) => {
-      if (row.updated_by === syncUserId) return
-      applyingRemoteStateRef.current = true
-      applyAppState(row.state, syncMembership)
+    const channel = subscribeToSharedState((row) => {
+      // A device's own saves echo back over the channel; everyone else's apply.
+      if (row.updated_by === deviceIdRef.current) return
+      applyRemoteState(row.state)
       setSyncStatus('synced')
-      setSyncMessage('Updated from cloud')
-      window.setTimeout(() => {
-        applyingRemoteStateRef.current = false
-      }, 500)
+      setSyncMessage('Updated from the team')
     })
 
     return () => {
       getSupabaseClient().removeChannel(channel)
     }
-  }, [syncMembership, syncReady, syncTeamId, syncUserId])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [syncReady])
 
   /**
    * Marking a player out leaves their lineup spots alone: the field shows them in
@@ -724,66 +711,14 @@ export default function CoachApp() {
     )
   }
 
-  async function authenticate(mode: 'sign-in' | 'sign-up') {
-    if (!isSupabaseConfigured()) {
-      setSyncStatus('local')
-      setSyncMessage('Supabase env missing')
-      return
-    }
-
-    const email = authForm.email.trim()
-    if (!email || !authForm.password) {
-      setSyncStatus('error')
-      setSyncMessage('Email and password required')
-      return
-    }
-
-    setSyncStatus('loading')
-    setSyncMessage(mode === 'sign-in' ? 'Signing in' : 'Creating account')
-
-    try {
-      const supabase = getSupabaseClient()
-      const result =
-        mode === 'sign-in'
-          ? await supabase.auth.signInWithPassword({ email, password: authForm.password })
-          : await supabase.auth.signUp({ email, password: authForm.password })
-
-      if (result.error) throw result.error
-      if (!result.data.session?.user) {
-        setSyncStatus('signed_out')
-        setSyncMessage('Check email confirmation')
-        return
-      }
-
-      await hydrateSupabaseSession(result.data.session.user.id, result.data.session.user.email || email, getCurrentState())
-      setAuthForm({ email: '', password: '' })
-    } catch (error) {
-      setSyncStatus('error')
-      setSyncMessage(error instanceof Error ? error.message : 'Auth failed')
-    }
-  }
-
-  async function signOut() {
-    if (isSupabaseConfigured()) {
-      await getSupabaseClient().auth.signOut()
-    }
-    setSyncReady(false)
-    setSyncUserId(null)
-    setSyncUserEmail('')
-    setSyncTeamId(null)
-    setSyncMembership(null)
-    setSyncStatus('signed_out')
-    setSyncMessage('Signed out')
-  }
-
   async function saveNow() {
-    if (!syncTeamId || !syncUserId) return
+    if (!isSupabaseConfigured() || !syncReady) return
     setSyncStatus('saving')
     setSyncMessage('Saving')
     try {
-      await saveSupabaseState(syncTeamId, getCurrentState(), syncUserId)
+      await saveSharedState(getCurrentState(), deviceIdRef.current)
       setSyncStatus('synced')
-      setSyncMessage('Cloud sync active')
+      setSyncMessage('Shared with the whole staff')
     } catch (error) {
       setSyncStatus('error')
       setSyncMessage(error instanceof Error ? error.message : 'Cloud save failed')
@@ -791,25 +726,23 @@ export default function CoachApp() {
   }
 
   async function loadNow() {
-    if (!syncTeamId) return
+    if (!isSupabaseConfigured()) return
     setSyncStatus('loading')
     setSyncMessage('Loading')
     try {
-      const snapshot = await loadSupabaseState(syncTeamId)
+      const snapshot = await loadSharedState()
       if (snapshot?.state) {
-        applyingRemoteStateRef.current = true
-        applyAppState(snapshot.state, syncMembership)
-        window.setTimeout(() => {
-          applyingRemoteStateRef.current = false
-        }, 500)
+        applyRemoteState(snapshot.state)
       }
+      setSyncReady(true)
       setSyncStatus('synced')
-      setSyncMessage('Cloud sync active')
+      setSyncMessage('Shared with the whole staff')
     } catch (error) {
       setSyncStatus('error')
       setSyncMessage(error instanceof Error ? error.message : 'Cloud load failed')
     }
   }
+
 
   return (
     <main className="min-h-screen pb-24">
@@ -823,11 +756,6 @@ export default function CoachApp() {
           workflow={workflow}
           syncStatus={syncStatus}
           syncMessage={syncMessage}
-          syncUserEmail={syncUserEmail}
-          authForm={authForm}
-          setAuthForm={setAuthForm}
-          authenticate={authenticate}
-          signOut={signOut}
           saveNow={saveNow}
           loadNow={loadNow}
           syncBusy={syncBusy}
@@ -928,11 +856,6 @@ function AppHeader({
   workflow,
   syncStatus,
   syncMessage,
-  syncUserEmail,
-  authForm,
-  setAuthForm,
-  authenticate,
-  signOut,
   saveNow,
   loadNow,
   syncBusy
@@ -945,11 +868,6 @@ function AppHeader({
   workflow: Workflow
   syncStatus: SyncStatus
   syncMessage: string
-  syncUserEmail: string
-  authForm: { email: string; password: string }
-  setAuthForm: (form: { email: string; password: string }) => void
-  authenticate: (mode: 'sign-in' | 'sign-up') => void
-  signOut: () => void
   saveNow: () => void
   loadNow: () => void
   syncBusy: boolean
@@ -991,46 +909,18 @@ function AppHeader({
             {syncStatus.replace('_', ' ')}
           </summary>
           <div className="absolute right-3 mt-2 w-[min(340px,calc(100vw-1.5rem))] rounded-lg border border-[#d8ded5] bg-white p-3 text-sm shadow-xl">
-            <p className="font-black">{syncUserEmail || syncMessage}</p>
-            {syncUserEmail ? (
-              <div className="mt-3 grid grid-cols-3 gap-2">
-                <button type="button" onClick={saveNow} disabled={syncBusy} className="rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40">
-                  Save
-                </button>
-                <button type="button" onClick={loadNow} disabled={syncBusy} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black disabled:opacity-40">
-                  Load
-                </button>
-                <button type="button" onClick={signOut} disabled={syncBusy} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black disabled:opacity-40" aria-label="Sign out">
-                  <LogOut size={16} className="mx-auto" />
-                </button>
-              </div>
-            ) : (
-              <div className="mt-3 space-y-2">
-                <input
-                  value={authForm.email}
-                  onChange={(event) => setAuthForm({ ...authForm, email: event.target.value })}
-                  className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
-                  placeholder="Email"
-                  type="email"
-                />
-                <input
-                  value={authForm.password}
-                  onChange={(event) => setAuthForm({ ...authForm, password: event.target.value })}
-                  className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
-                  placeholder="Password"
-                  type="password"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => authenticate('sign-in')} disabled={syncBusy} className="flex items-center justify-center gap-2 rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40">
-                    <LogIn size={15} />
-                    Sign In
-                  </button>
-                  <button type="button" onClick={() => authenticate('sign-up')} disabled={syncBusy} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black disabled:opacity-40">
-                    Create
-                  </button>
-                </div>
-              </div>
-            )}
+            <p className="font-black">{syncMessage}</p>
+            <p className="mt-1 text-xs font-bold text-[#53665c]">
+              Everyone with the app shares this team's data — no sign-in needed.
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button type="button" onClick={saveNow} disabled={syncBusy} className="rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40">
+                Save
+              </button>
+              <button type="button" onClick={loadNow} disabled={syncBusy} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black disabled:opacity-40">
+                Refresh
+              </button>
+            </div>
           </div>
         </details>
       </div>

@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: 'Flag Coach',
     short_name: 'Flag Coach',
     description: 'Youth flag football roster, lineup, and game-day planning app',
-    start_url: '/planning',
+    start_url: '/home',
     scope: '/',
     display: 'standalone',
     background_color: '#f7f5ee',

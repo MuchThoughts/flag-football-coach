@@ -14,6 +14,15 @@ import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
 import {
+  createCallSheet,
+  createPlaybook,
+  ensurePlaybooks,
+  MAIN_PLAYBOOK_ID,
+  moveItem,
+  numberCallSheet,
+  removePlaysFromCallSheets
+} from '../lib/playbooks'
+import {
   classifySteps,
   COMPONENT_GROUPS,
   componentsInGroup,
@@ -45,7 +54,7 @@ import { compareLineups, previousDrive } from '../lib/substitutions'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
-import type { PlaybookPlay, ResolvedDrive } from '../lib/types'
+import type { AppState, PlaybookPlay, ResolvedDrive } from '../lib/types'
 import { createLineup, createLineups, defaultLineupSlot, findLineup, lineupId, resolveDrive, resolveDrives } from '../lib/lineups'
 
 function assignedIds(assignments: Record<string, string | null>) {
@@ -328,6 +337,7 @@ assert.deepEqual(initialAppState.plays, [])
 const samplePlay: PlaybookPlay = {
   id: 'play-sample',
   teamId: 'team-wildcats',
+  playbookId: 'playbook-main',
   name: 'Sweep Right',
   formationId: 'formation-phins-base',
   type: 'run',
@@ -583,6 +593,7 @@ const twins = seeded.formations.find((formation) => formation.name === 'Twins')!
 const builtPlay = {
   id: 'play-built',
   teamId: 'team-dolphins',
+  playbookId: 'playbook-main',
   formationId: twins.id,
   name: 'Twins Fake HB Stretch Right QB Keeper',
   type: 'run' as const,
@@ -826,6 +837,79 @@ assert.equal(roundTripFailures, 0)
 
   assert.equal(playFileName('Trips Right — Go!', 'png'), 'trips-right-go.png')
   assert.equal(playFileName('  ', 'png'), 'play.png')
+}
+
+// ---- Playbooks and call sheets ----
+{
+  const bookPlay = (id: string, playbookId: string, type: 'run' | 'pass') => ({
+    ...samplePlay,
+    id,
+    playbookId,
+    name: id,
+    type
+  })
+
+  // Every state starts with a main playbook, and plays from before playbooks land in it.
+  assert.equal(initialAppState.playbooks.length, 1)
+  assert.equal(initialAppState.playbooks[0].id, MAIN_PLAYBOOK_ID)
+  const legacyPlay = { ...samplePlay, playbookId: undefined } as unknown as PlaybookPlay
+  const upgraded = migrateAppState({
+    ...initialAppState,
+    playbookSeed: initialAppState.playbookSeed,
+    plays: [legacyPlay],
+    playbooks: undefined,
+    callSheets: undefined
+  } as unknown as AppState)
+  assert.equal(upgraded.playbooks.length, 1)
+  assert.equal(upgraded.plays[0].playbookId, MAIN_PLAYBOOK_ID)
+  assert.deepEqual(upgraded.callSheets, [])
+
+  // A play whose playbook is gone moves to the first one left; playbooks the coach made stay.
+  const fall = createPlaybook('t', 'Fall Offense', 'playbook-fall')
+  const kept = ensurePlaybooks('t', [fall], [bookPlay('a', 'playbook-gone', 'run'), bookPlay('b', 'playbook-fall', 'pass')], '')
+  assert.deepEqual(kept.playbooks.map((item) => item.id), ['playbook-fall'])
+  assert.deepEqual(kept.plays.map((play) => play.playbookId), ['playbook-fall', 'playbook-fall'])
+
+  // A new call sheet sorts its own playbook's runs and passes into their boxes.
+  const bookPlays = [
+    bookPlay('run-1', 'playbook-fall', 'run'),
+    bookPlay('pass-1', 'playbook-fall', 'pass'),
+    bookPlay('pass-2', 'playbook-fall', 'pass'),
+    bookPlay('other', 'playbook-main', 'run')
+  ]
+  const sheet = createCallSheet('t', 'playbook-fall', 'Week 3', bookPlays)
+  const box = (title: string) => sheet.sections.find((section) => section.title === title)!
+  assert.deepEqual(sheet.sections.map((section) => section.title), ['Openers', 'Runs', 'Passes', 'Red Zone', 'Extra Point'])
+  assert.deepEqual(box('Runs').playIds, ['run-1'])
+  assert.deepEqual(box('Passes').playIds, ['pass-1', 'pass-2'])
+  assert.deepEqual(box('Openers').playIds, [])
+
+  // Numbers run straight through the sheet, box after box.
+  const withOpener = { ...sheet, sections: sheet.sections.map((section) => (section.title === 'Openers' ? { ...section, playIds: ['pass-2'] } : section)) }
+  const numbered = numberCallSheet(withOpener, bookPlays)
+  assert.deepEqual(
+    numbered.flatMap((section) => section.plays.map((entry) => `${entry.number}:${entry.play.id}`)),
+    ['1:pass-2', '2:run-1', '3:pass-1', '4:pass-2']
+  )
+
+  // Deleting a play takes it off every sheet; sheets it was never on are untouched.
+  const cleaned = removePlaysFromCallSheets([withOpener], ['pass-2'])
+  assert.deepEqual(cleaned[0].sections.flatMap((section) => section.playIds), ['run-1', 'pass-1'])
+  assert.equal(removePlaysFromCallSheets([sheet], ['missing'])[0], sheet)
+
+  // Migration drops sheets whose playbook is gone and plays that no longer exist.
+  const tidied = migrateAppState({
+    ...initialAppState,
+    playbooks: [fall],
+    plays: [bookPlay('run-1', 'playbook-fall', 'run')],
+    callSheets: [sheet, { ...sheet, id: 'orphan', playbookId: 'playbook-gone' }]
+  })
+  assert.deepEqual(tidied.callSheets.map((item) => item.id), [sheet.id])
+  assert.deepEqual(tidied.callSheets[0].sections.flatMap((section) => section.playIds), ['run-1'])
+
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 0, 1), ['b', 'a', 'c'])
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 0, -1), ['a', 'b', 'c'])
+  assert.deepEqual(moveItem(['a', 'b', 'c'], 2, 1), ['a', 'b', 'c'])
 }
 
 console.log('logic tests passed')

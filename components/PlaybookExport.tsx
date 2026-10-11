@@ -92,6 +92,29 @@ export function SavePlayImageButton({ play, formation }: { play: PlaybookPlay; f
   )
 }
 
+/**
+ * Whatever this wraps is what prints, in place of the app, while it is mounted.
+ * On screen it stays hidden.
+ */
+export function PrintPortal({ page, children }: { page: string; children: React.ReactNode }) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    document.body.classList.add('printing')
+    setMounted(true)
+    return () => document.body.classList.remove('printing')
+  }, [])
+
+  if (!mounted) return null
+  return createPortal(
+    <div className="print-root">
+      <style>{`@page { size: ${page}; margin: 0.4in; }`}</style>
+      {children}
+    </div>,
+    document.body
+  )
+}
+
 type PrintLayout = 'grid' | 'full'
 
 /**
@@ -99,36 +122,30 @@ type PrintLayout = 'grid' | 'full'
  * has Save as PDF, which is how the playbook leaves the app.
  */
 export function PrintPlaybookSheet({
+  title,
   plays,
   formations,
   teamName,
-  filtered,
   onClose
 }: {
+  title: string
   plays: PlaybookPlay[]
   formations: Formation[]
   teamName: string
-  filtered: boolean
   onClose: () => void
 }) {
   const [layout, setLayout] = useState<PrintLayout>('grid')
   const [includeNotes, setIncludeNotes] = useState(true)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    // Printing only swaps the page for the playbook while this sheet is open.
-    document.body.classList.add('printing-playbook')
-    setMounted(true)
-    return () => document.body.classList.remove('printing-playbook')
-  }, [])
 
   const formationFor = (play: PlaybookPlay) => formations.find((item) => item.id === play.formationId)
 
   const printable = (
-    <div className="print-root">
-      <style>{`@page { size: letter ${layout === 'full' ? 'landscape' : 'portrait'}; margin: 0.4in; }`}</style>
+    <PrintPortal page={`letter ${layout === 'full' ? 'landscape' : 'portrait'}`}>
       <header className="print-header">
-        <h1>{teamName ? `${teamName} Playbook` : 'Playbook'}</h1>
+        <div>
+          <h1>{title}</h1>
+          {teamName && <p className="print-header-team">{teamName}</p>}
+        </div>
         <p>
           {plays.length} play{plays.length === 1 ? '' : 's'}
         </p>
@@ -151,7 +168,7 @@ export function PrintPlaybookSheet({
           )
         })}
       </div>
-    </div>
+    </PrintPortal>
   )
 
   return (
@@ -160,10 +177,10 @@ export function PrintPlaybookSheet({
         <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="font-display text-xl font-black">Print Playbook</h3>
+              <h3 className="font-display text-xl font-black">Export Playbook</h3>
               <p className="mt-1 text-sm font-bold text-[#53665c]">
-                {plays.length} play{plays.length === 1 ? '' : 's'}
-                {filtered ? ' matching your filters' : ''}. Choose Save as PDF in the print dialog to keep a copy.
+                All {plays.length} play{plays.length === 1 ? '' : 's'} in {title}. Choose Save as PDF in the print dialog
+                to keep a copy.
               </p>
             </div>
             <button
@@ -212,7 +229,7 @@ export function PrintPlaybookSheet({
           </button>
         </div>
       </div>
-      {mounted && createPortal(printable, document.body)}
+      {printable}
     </>
   )
 }

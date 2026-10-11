@@ -74,16 +74,16 @@ button {
 }
 
 @media print {
-  html:has(body.printing-playbook),
-  body.printing-playbook {
+  html:has(body.printing),
+  body.printing {
     background: #fff;
   }
 
-  body.printing-playbook > :not(.print-root) {
+  body.printing > :not(.print-root) {
     display: none !important;
   }
 
-  body.printing-playbook > .print-root {
+  body.printing > .print-root {
     display: block;
     color: #10201a;
     font-family: Helvetica, Arial, sans-serif;
@@ -110,6 +110,13 @@ button {
     margin: 0;
     font-size: 10pt;
     font-weight: 700;
+  }
+
+  .print-header .print-header-team {
+    margin-top: 0.02in;
+    color: #53665c;
+    font-size: 9pt;
+    text-transform: uppercase;
   }
 
   .print-grid {
@@ -182,6 +189,77 @@ button {
     -webkit-line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+  }
+
+  .callsheet-grid {
+    column-count: 3;
+    column-gap: 0.2in;
+  }
+
+  .callsheet-diagrams {
+    column-count: 4;
+  }
+
+  .callsheet-section {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 0.15in;
+    border: 1.5px solid #10201a;
+  }
+
+  .callsheet-section h2 {
+    margin: 0;
+    padding: 0.04in 0.08in;
+    background: #10201a;
+    color: #fff;
+    font-size: 10pt;
+    font-weight: 900;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .callsheet-section ol {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .callsheet-section li {
+    padding: 0.04in 0.08in;
+    border-top: 0.5px solid #d8ded5;
+    break-inside: avoid;
+  }
+
+  .callsheet-section li:first-child {
+    border-top: 0;
+  }
+
+  .callsheet-row {
+    display: flex;
+    align-items: baseline;
+    gap: 0.06in;
+    font-size: 10pt;
+  }
+
+  .callsheet-number {
+    min-width: 0.22in;
+    font-weight: 900;
+  }
+
+  .callsheet-name {
+    flex: 1;
+    font-weight: 800;
+  }
+
+  .callsheet-formation {
+    color: #53665c;
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .callsheet-diagrams .play-diagram {
+    margin-top: 0.03in;
   }
 
   .print-full .print-card-notes {

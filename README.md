@@ -61,11 +61,29 @@ window, without browser bars.
 - **Mac:** in Safari, choose File → **Add to Dock**. In Chrome, use the install
   icon in the address bar.
 
+## Getting around
+
+The toolbar across the top has **Home**, **Roster** (with **Planning** and
+**Gameday** tabs) and **Playbooks**, plus the game picker and the sync status
+on the right.
+
+Under **Playbooks** the team can keep several playbooks. Each play belongs to
+one playbook; formations are shared by all of them. Plays saved before
+playbooks existed are in **Main Playbook**.
+
+## Call sheets
+
+Open a playbook and tap **Call Sheet** to start one. A new sheet comes with
+Openers, Runs, Passes, Red Zone and Extra Point boxes, with the playbook's runs
+and passes already sorted in. Rename, reorder, add or remove boxes and plays,
+then **Print** it on one landscape page, as play names only or with diagrams.
+Plays are numbered straight through the sheet.
+
 ## Exporting the playbook
 
-- **Print or PDF:** on the Playbook tab, tap the printer button. It prints the
-  plays your filters show, six to a page or one per page, with or without
-  notes. Choose **Save as PDF** in the print dialog to keep a file.
+- **Print or PDF:** open a playbook and tap **Export**. It prints every play
+  in it, six to a page or one per page, with or without notes. Choose
+  **Save as PDF** in the print dialog to keep a file.
 - **One play as an image:** open a play and tap **Save as Image**. On a phone
   the share sheet opens (Save Image, Messages, AirDrop); elsewhere a PNG
   downloads.

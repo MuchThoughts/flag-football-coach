@@ -15,6 +15,7 @@ import { LINEUPS_PER_UNIT } from './types'
 import { createLineups, defaultLineupSlot, lineupId } from './lineups'
 import { PHINS_PLAYBOOK_SEED, phinsPlaybook } from './phins-playbook'
 import { defaultFormationPositions } from './playbook'
+import { ensurePlaybooks } from './playbooks'
 import { initialAppState, samplePlayers } from './sample-data'
 
 const legacyTimestamp = '2026-01-01T00:00:00.000Z'
@@ -283,6 +284,7 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
     return {
       id: legacy.id,
       teamId: legacy.teamId,
+      playbookId: play.playbookId,
       name: legacy.name,
       formationId: formation.id,
       type: tags.includes('run') ? ('run' as PlayType) : ('pass' as PlayType),
@@ -346,6 +348,8 @@ export function migrateAppState(saved: AppState): AppState {
         practices: saved.practices || [],
         practiceTemplates: saved.practiceTemplates || initialAppState.practiceTemplates,
         plays: saved.plays || [],
+        playbooks: saved.playbooks || [],
+        callSheets: saved.callSheets || [],
         formations: saved.formations || [],
         lineups: saved.lineups || [],
         playbookSeed: saved.playbookSeed || '',
@@ -358,5 +362,24 @@ export function migrateAppState(saved: AppState): AppState {
   const migrated = migratePlaybook(state)
   const seeded = seedPhinsPlaybook({ ...state, plays: migrated.plays, formations: migrated.formations })
 
-  return { ...seeded, players: seeded.players.map(normalizePlayer) }
+  const collections = ensurePlaybooks(seeded.team.id, seeded.playbooks, seeded.plays, legacyTimestamp)
+  const playIds = new Set(collections.plays.map((play) => play.id))
+  const playbookIds = new Set(collections.playbooks.map((playbook) => playbook.id))
+  // A sheet whose playbook is gone has nothing to call from.
+  const callSheets = (seeded.callSheets || [])
+    .filter((sheet) => playbookIds.has(sheet.playbookId))
+    .map((sheet) => ({
+      ...sheet,
+      sections: (sheet.sections || []).map((section) => ({
+        ...section,
+        playIds: (section.playIds || []).filter((id) => playIds.has(id))
+      }))
+    }))
+
+  return {
+    ...seeded,
+    ...collections,
+    callSheets,
+    players: seeded.players.map(normalizePlayer)
+  }
 }

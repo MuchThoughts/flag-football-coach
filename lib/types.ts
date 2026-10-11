@@ -174,9 +174,37 @@ export interface PlayStep {
   fake?: boolean
 }
 
+/** A named collection of plays, like an offense for one season or one opponent. */
+export interface Playbook {
+  id: string
+  teamId: string
+  name: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** One box on a call sheet: a situation and the plays to call in it, in order. */
+export interface CallSheetSection {
+  id: string
+  title: string
+  playIds: string[]
+}
+
+/** A game-day sheet built from one playbook's plays. */
+export interface CallSheet {
+  id: string
+  teamId: string
+  playbookId: string
+  name: string
+  sections: CallSheetSection[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface PlaybookPlay {
   id: string
   teamId: string
+  playbookId: string
   name: string
   formationId: string
   type: PlayType
@@ -207,6 +235,8 @@ export interface AppState {
   practices: PracticePlan[]
   practiceTemplates: PracticeTemplate[]
   plays: PlaybookPlay[]
+  playbooks: Playbook[]
+  callSheets: CallSheet[]
   formations: Formation[]
   /** Which seeded playbook this state has already taken. */
   playbookSeed: string

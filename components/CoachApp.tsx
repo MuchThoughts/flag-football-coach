@@ -6,11 +6,12 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  Cloud,
+  ClipboardList,
   Copy,
+  FileDown,
   Minimize2,
+  Pencil,
   Plus,
-  Printer,
   RotateCcw,
   Save,
   Trash2,
@@ -60,6 +61,11 @@ import {
 import { LINEUPS_PER_UNIT } from '@/lib/types'
 import PlaybookField from '@/components/PlaybookField'
 import { PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
+import { CallSheetsSheet } from '@/components/CallSheets'
+import HomePage, { type PlaybookOverview } from '@/components/HomePage'
+import PlaybookLibrary from '@/components/PlaybookLibrary'
+import TopToolbar, { type Section, type SyncStatus } from '@/components/TopToolbar'
+import { createCallSheet, createPlaybook, removePlaysFromCallSheets } from '@/lib/playbooks'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
 import { getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { snapToField, type SnapResult } from '@/lib/snapping'
@@ -68,6 +74,7 @@ import { createDrive, createPlayer, initialAppState } from '@/lib/sample-data'
 import type {
   AppSettings,
   AppState,
+  CallSheet,
   Conversion,
   Drive,
   DriveNote,
@@ -76,6 +83,7 @@ import type {
   Game,
   Lineup,
   PlayArea,
+  Playbook,
   PlaybookPlay,
   PlayFootball,
   Player,
@@ -87,8 +95,17 @@ import type {
   Unit
 } from '@/lib/types'
 
-type Workflow = 'planning' | 'gameday' | 'playbook' | 'play-builder'
-type SyncStatus = 'local' | 'loading' | 'synced' | 'saving' | 'error'
+type RosterTab = 'planning' | 'gameday'
+
+/** Where the app is: one of the toolbar sections, plus which part of it. */
+interface Route {
+  section: Section
+  rosterTab: RosterTab
+  playbookId: string | null
+}
+
+/** A play as an editor hands it over; the app fills in team, playbook and dates. */
+type PlayDraft = Omit<PlaybookPlay, 'teamId' | 'playbookId' | 'createdAt' | 'updatedAt'>
 
 const storageKey = 'flag-football-coach:v3'
 const legacyStorageKeys = ['flag-football-coach:v2', 'flag-football-coach:v1']
@@ -134,15 +151,20 @@ function shortResult(result: DriveResult) {
   return result
 }
 
-function workflowFromPath(pathname: string): Workflow {
-  if (pathname.includes('/gameday')) return 'gameday'
-  if (pathname.includes('/play-builder')) return 'play-builder'
-  if (pathname.includes('/playbook')) return 'playbook'
-  return 'planning'
+/** Old paths (/planning, /gameday, /playbook, /play-builder) keep working for saved bookmarks. */
+function routeFromPath(pathname: string): Route {
+  const [first, second] = pathname.split('/').filter(Boolean).map(decodeURIComponent)
+  if (first === 'roster') return { section: 'roster', rosterTab: second === 'gameday' ? 'gameday' : 'planning', playbookId: null }
+  if (first === 'planning' || first === 'gameday') return { section: 'roster', rosterTab: first, playbookId: null }
+  if (first === 'playbooks') return { section: 'playbooks', rosterTab: 'planning', playbookId: second || null }
+  if (first === 'playbook' || first === 'play-builder') return { section: 'playbooks', rosterTab: 'planning', playbookId: null }
+  return { section: 'home', rosterTab: 'planning', playbookId: null }
 }
 
-function workflowPath(workflow: Workflow) {
-  return `/${workflow}`
+function routePath(route: Route) {
+  if (route.section === 'roster') return `/roster/${route.rosterTab}`
+  if (route.section === 'playbooks') return route.playbookId ? `/playbooks/${encodeURIComponent(route.playbookId)}` : '/playbooks'
+  return '/home'
 }
 
 export default function CoachApp() {
@@ -156,12 +178,14 @@ export default function CoachApp() {
   const [practices, setPractices] = useState(initialAppState.practices)
   const [practiceTemplates, setPracticeTemplates] = useState(initialAppState.practiceTemplates)
   const [plays, setPlays] = useState(initialAppState.plays)
+  const [playbooks, setPlaybooks] = useState(initialAppState.playbooks)
+  const [callSheets, setCallSheets] = useState(initialAppState.callSheets)
   const [formations, setFormations] = useState(initialAppState.formations)
   const [playbookSeed, setPlaybookSeed] = useState(initialAppState.playbookSeed)
   const [lineups, setLineups] = useState(initialAppState.lineups)
   const [slotPositions, setSlotPositions] = useState(initialAppState.slotPositions)
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppState.appSettings)
-  const [workflow, setWorkflow] = useState<Workflow>('planning')
+  const [route, setRoute] = useState<Route>({ section: 'home', rosterTab: 'planning', playbookId: null })
   const [rosterCollapsed, setRosterCollapsed] = useState(false)
   const [selectedLineupId, setSelectedLineupId] = useState(initialAppState.lineups[0].id)
   const [loaded, setLoaded] = useState(false)
@@ -204,29 +228,33 @@ export default function CoachApp() {
   const nextOpenDrive = gameDrives.find((drive) => drive.status !== 'completed') || gameDrives[0]
   const syncBusy = syncStatus === 'loading' || syncStatus === 'saving'
 
-  function navigateWorkflow(nextWorkflow: Workflow) {
-    setWorkflow(nextWorkflow)
-
-    const nextPath = workflowPath(nextWorkflow)
-    if (window.location.pathname !== nextPath) {
-      window.history.pushState({ workflow: nextWorkflow }, '', nextPath)
-    }
+  function navigate(next: Partial<Route>) {
+    setRoute((current) => {
+      const nextRoute = { ...current, ...next }
+      const nextPath = routePath(nextRoute)
+      if (window.location.pathname !== nextPath) {
+        window.history.pushState(null, '', nextPath)
+      }
+      return nextRoute
+    })
+    window.scrollTo({ top: 0 })
   }
 
   useEffect(() => {
-    function applyPathWorkflow() {
-      const nextWorkflow = workflowFromPath(window.location.pathname)
-      setWorkflow(nextWorkflow)
-
-      if (window.location.pathname === '/') {
-        window.history.replaceState({ workflow: nextWorkflow }, '', workflowPath(nextWorkflow))
+    function applyPath() {
+      const nextRoute = routeFromPath(window.location.pathname)
+      setRoute(nextRoute)
+      // The root and the old paths settle on their current address.
+      const canonical = routePath(nextRoute)
+      if (window.location.pathname !== canonical) {
+        window.history.replaceState(null, '', canonical)
       }
     }
 
-    applyPathWorkflow()
-    window.addEventListener('popstate', applyPathWorkflow)
+    applyPath()
+    window.addEventListener('popstate', applyPath)
     return () => {
-      window.removeEventListener('popstate', applyPathWorkflow)
+      window.removeEventListener('popstate', applyPath)
     }
   }, [])
 
@@ -246,6 +274,8 @@ export default function CoachApp() {
       practices,
       practiceTemplates,
       plays,
+      playbooks,
+      callSheets,
       formations,
       playbookSeed,
       lineups,
@@ -273,6 +303,8 @@ export default function CoachApp() {
     setPractices(saved.practices)
     setPracticeTemplates(saved.practiceTemplates)
     setPlays(saved.plays)
+    setPlaybooks(saved.playbooks)
+    setCallSheets(saved.callSheets)
     setFormations(saved.formations)
     setPlaybookSeed(saved.playbookSeed)
     setLineups(saved.lineups)
@@ -388,7 +420,7 @@ export default function CoachApp() {
           setSyncMessage(error instanceof Error ? error.message : 'Cloud save failed')
         })
     }, 700)
-  }, [appSettings, availabilityByGame, drives, formations, games, lineups, loaded, players, plays, practiceTemplates, practices, playbookSeed, selectedDriveId, selectedGameId, slotPositions, team])
+  }, [appSettings, availabilityByGame, callSheets, drives, formations, games, lineups, loaded, players, playbooks, plays, practiceTemplates, practices, playbookSeed, selectedDriveId, selectedGameId, slotPositions, team])
 
   useEffect(() => {
     if (!syncReady) return
@@ -615,14 +647,15 @@ export default function CoachApp() {
     setDrives((items) => items.map((drive) => (drive.id === driveId ? { ...drive, lineupId: lineupIdValue } : drive)))
   }
 
-  /** Creates or updates a play, keeping the original created date on an edit. */
-  function savePlay(draft: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) {
+  /** Creates or updates a play in a playbook, keeping the original created date on an edit. */
+  function savePlay(playbookId: string, draft: PlayDraft) {
     const now = new Date().toISOString()
     setPlays((items) => {
       const existing = items.find((play) => play.id === draft.id)
       const play: PlaybookPlay = {
         ...draft,
         teamId: team.id,
+        playbookId,
         createdAt: existing?.createdAt || now,
         updatedAt: now
       }
@@ -632,6 +665,43 @@ export default function CoachApp() {
 
   function deletePlay(playId: string) {
     setPlays((items) => items.filter((play) => play.id !== playId))
+    setCallSheets((sheets) => removePlaysFromCallSheets(sheets, [playId]))
+  }
+
+  function addPlaybook(name: string) {
+    const playbook = createPlaybook(team.id, name)
+    setPlaybooks((items) => [...items, playbook])
+    navigate({ section: 'playbooks', playbookId: playbook.id })
+  }
+
+  function renamePlaybook(playbookId: string, name: string) {
+    const now = new Date().toISOString()
+    setPlaybooks((items) =>
+      items.map((playbook) => (playbook.id === playbookId ? { ...playbook, name: name.trim() || playbook.name, updatedAt: now } : playbook))
+    )
+  }
+
+  /** A playbook takes its plays and call sheets with it; the last one cannot go. */
+  function deletePlaybook(playbookId: string) {
+    if (playbooks.length <= 1) return
+    setPlaybooks((items) => items.filter((playbook) => playbook.id !== playbookId))
+    setPlays((items) => items.filter((play) => play.playbookId !== playbookId))
+    setCallSheets((sheets) => sheets.filter((sheet) => sheet.playbookId !== playbookId))
+    navigate({ section: 'playbooks', playbookId: null })
+  }
+
+  function addCallSheet(playbookId: string, name: string) {
+    const sheet = createCallSheet(team.id, playbookId, name, plays)
+    setCallSheets((sheets) => [...sheets, sheet])
+    return sheet
+  }
+
+  function saveCallSheet(sheet: CallSheet) {
+    setCallSheets((sheets) => sheets.map((item) => (item.id === sheet.id ? sheet : item)))
+  }
+
+  function deleteCallSheet(sheetId: string) {
+    setCallSheets((sheets) => sheets.filter((sheet) => sheet.id !== sheetId))
   }
 
   function saveFormation(draft: Omit<Formation, 'teamId' | 'createdAt' | 'updatedAt'>) {
@@ -650,8 +720,10 @@ export default function CoachApp() {
 
   /** Plays built on a deleted formation would have nothing to draw, so they go too. */
   function deleteFormation(formationId: string) {
+    const doomed = plays.filter((play) => play.formationId === formationId).map((play) => play.id)
     setFormations((items) => items.filter((formation) => formation.id !== formationId))
     setPlays((items) => items.filter((play) => play.formationId !== formationId))
+    setCallSheets((sheets) => removePlaysFromCallSheets(sheets, doomed))
   }
 
   function moveSlot(unit: Unit, slotCode: string, position: { x: number; y: number }) {
@@ -759,188 +831,178 @@ export default function CoachApp() {
   }
 
 
-  return (
-    <main className="min-h-screen pb-24">
-      <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-3 py-3 sm:px-5">
-        <AppHeader
-          teamName={team.name}
-          readyCount={availablePlayers.length}
-          games={games}
-          selectedGameId={selectedGame?.id || ''}
-          setSelectedGameId={setSelectedGameId}
-          workflow={workflow}
-          syncStatus={syncStatus}
-          syncMessage={syncMessage}
-          saveNow={saveNow}
-          loadNow={loadNow}
-          syncBusy={syncBusy}
-        />
+  const playbookOverviews: PlaybookOverview[] = playbooks.map((playbook) => ({
+    playbook,
+    playCount: plays.filter((play) => play.playbookId === playbook.id).length,
+    callSheetCount: callSheets.filter((sheet) => sheet.playbookId === playbook.id).length
+  }))
+  const openPlaybook = route.playbookId ? playbooks.find((playbook) => playbook.id === route.playbookId) : undefined
 
-        {workflow === 'planning' ? (
-          <PlanningPage
-            availablePlayers={availablePlayers}
-            unavailablePlayers={unavailablePlayers}
-            removePlayer={(playerId) => setPlayerAvailable(playerId, false)}
-            restorePlayers={restorePlayers}
-            deletePlayer={deletePlayer}
-            addPlayer={addPlayer}
-            slotPositions={slotPositions}
-            moveSlot={moveSlot}
-            availability={availability}
-            rosterCollapsed={rosterCollapsed}
-            setRosterCollapsed={setRosterCollapsed}
-            copyLineup={copyLineup}
-            lineups={lineups}
-            selectedLineup={selectedLineup}
-            setSelectedLineupId={setSelectedLineupId}
-            resolvedDrives={resolvedDrives}
-            autoFillSelectedLineup={autoFillSelectedLineup}
-            selectedPlayer={selectedPlayer}
-            selectedPlayerId={selectedPlayerId}
-            setSelectedPlayerId={setSelectedPlayerId}
-            benchPlayers={benchPlayers}
-            assignPlayerToSlot={assignPlayerToSlot}
-            setSlotBackup={setSlotBackup}
-            clearSlot={clearSlot}
-            playersById={players}
-            usage={usage}
-            lineupWarnings={lineupWarnings}
-            draggingPlayerId={draggingPlayerId}
-            setDraggingPlayerId={setDraggingPlayerId}
+  return (
+    <main className="min-h-screen pb-10">
+      <TopToolbar
+        section={route.section}
+        onNavigate={(section) => navigate(section === 'playbooks' ? { section, playbookId: null } : { section })}
+        games={games}
+        selectedGameId={selectedGame?.id || ''}
+        setSelectedGameId={setSelectedGameId}
+        syncStatus={syncStatus}
+        syncMessage={syncMessage}
+        saveNow={saveNow}
+        loadNow={loadNow}
+        syncBusy={syncBusy}
+      />
+
+      <div className="mx-auto w-full max-w-3xl px-3 sm:px-5">
+        {route.section === 'home' ? (
+          <HomePage
+            team={team}
+            game={selectedGame}
+            availableCount={availablePlayers.length}
+            rosterCount={activePlayers.length}
+            summary={gameSummary}
+            playbooks={playbookOverviews}
+            onOpenRoster={(rosterTab) => navigate({ section: 'roster', rosterTab })}
+            onOpenPlaybook={(playbookId) => navigate({ section: 'playbooks', playbookId })}
+            onOpenPlaybooks={() => navigate({ section: 'playbooks', playbookId: null })}
           />
-        ) : workflow === 'play-builder' ? (
-          <PlayBuilderPage plays={plays} formations={formations} savePlay={savePlay} deletePlay={deletePlay} />
-        ) : workflow === 'playbook' ? (
+        ) : route.section === 'roster' ? (
+          <>
+            <h1 className="pt-5 font-display text-3xl font-black">Roster</h1>
+            <SubTabs
+              value={route.rosterTab}
+              onChange={(rosterTab) => navigate({ rosterTab })}
+              options={[
+                { value: 'planning', label: 'Planning' },
+                { value: 'gameday', label: 'Gameday' }
+              ]}
+            />
+            {route.rosterTab === 'planning' ? (
+              <PlanningPage
+                availablePlayers={availablePlayers}
+                unavailablePlayers={unavailablePlayers}
+                removePlayer={(playerId) => setPlayerAvailable(playerId, false)}
+                restorePlayers={restorePlayers}
+                deletePlayer={deletePlayer}
+                addPlayer={addPlayer}
+                slotPositions={slotPositions}
+                moveSlot={moveSlot}
+                availability={availability}
+                rosterCollapsed={rosterCollapsed}
+                setRosterCollapsed={setRosterCollapsed}
+                copyLineup={copyLineup}
+                lineups={lineups}
+                selectedLineup={selectedLineup}
+                setSelectedLineupId={setSelectedLineupId}
+                resolvedDrives={resolvedDrives}
+                autoFillSelectedLineup={autoFillSelectedLineup}
+                selectedPlayer={selectedPlayer}
+                selectedPlayerId={selectedPlayerId}
+                setSelectedPlayerId={setSelectedPlayerId}
+                benchPlayers={benchPlayers}
+                assignPlayerToSlot={assignPlayerToSlot}
+                setSlotBackup={setSlotBackup}
+                clearSlot={clearSlot}
+                playersById={players}
+                usage={usage}
+                lineupWarnings={lineupWarnings}
+                draggingPlayerId={draggingPlayerId}
+                setDraggingPlayerId={setDraggingPlayerId}
+              />
+            ) : (
+              <GamedayPage
+                gameDrives={gameDrives}
+                resolvedDrives={resolvedDrives}
+                selectedDrive={selectedDrive}
+                selectedDriveIndex={selectedDriveIndex}
+                setSelectedDriveId={setSelectedDriveId}
+                selectAdjacentDrive={selectAdjacentDrive}
+                nextOpenDrive={nextOpenDrive}
+                players={players}
+                availablePlayers={availablePlayers}
+                gameSummary={gameSummary}
+                gameNoteDraft={gameNoteDraft}
+                updateDriveNote={updateDriveNote}
+                recordDriveResult={recordDriveResult}
+                setDriveConversion={setDriveConversion}
+                lineups={lineups}
+                setDriveLineup={setDriveLineup}
+                selectedResolvedDrive={selectedResolvedDrive}
+                startNewGame={startNewGame}
+                startingUnit={startingUnit}
+                setStartingUnit={(unit) => selectedGame && setGameStartingUnit(selectedGame.id, unit)}
+                deleteGame={() => selectedGame && deleteGame(selectedGame.id)}
+                gameName={selectedGame?.name || ''}
+                gameCount={games.length}
+                slotPositions={slotPositions}
+                availability={availability}
+              />
+            )}
+          </>
+        ) : openPlaybook ? (
           <PlaybookPage
+            key={openPlaybook.id}
+            playbook={openPlaybook}
+            canDelete={playbooks.length > 1}
             teamName={team.name}
-            plays={plays}
+            gameName={selectedGame?.name || ''}
+            plays={plays.filter((play) => play.playbookId === openPlaybook.id)}
+            allPlays={plays}
             formations={formations}
-            savePlay={savePlay}
+            callSheets={callSheets.filter((sheet) => sheet.playbookId === openPlaybook.id)}
+            onBack={() => navigate({ section: 'playbooks', playbookId: null })}
+            renamePlaybook={(name) => renamePlaybook(openPlaybook.id, name)}
+            deletePlaybook={() => deletePlaybook(openPlaybook.id)}
+            savePlay={(draft) => savePlay(openPlaybook.id, draft)}
             deletePlay={deletePlay}
             saveFormation={saveFormation}
             deleteFormation={deleteFormation}
+            addCallSheet={(name) => addCallSheet(openPlaybook.id, name)}
+            saveCallSheet={saveCallSheet}
+            deleteCallSheet={deleteCallSheet}
           />
         ) : (
-          <GamedayPage
-            gameDrives={gameDrives}
-            resolvedDrives={resolvedDrives}
-            selectedDrive={selectedDrive}
-            selectedDriveIndex={selectedDriveIndex}
-            setSelectedDriveId={setSelectedDriveId}
-            selectAdjacentDrive={selectAdjacentDrive}
-            nextOpenDrive={nextOpenDrive}
-            players={players}
-            availablePlayers={availablePlayers}
-            gameSummary={gameSummary}
-            gameNoteDraft={gameNoteDraft}
-            updateDriveNote={updateDriveNote}
-            recordDriveResult={recordDriveResult}
-            setDriveConversion={setDriveConversion}
-            lineups={lineups}
-            setDriveLineup={setDriveLineup}
-            selectedResolvedDrive={selectedResolvedDrive}
-            startNewGame={startNewGame}
-            startingUnit={startingUnit}
-            setStartingUnit={(unit) => selectedGame && setGameStartingUnit(selectedGame.id, unit)}
-            deleteGame={() => selectedGame && deleteGame(selectedGame.id)}
-            gameName={selectedGame?.name || ''}
-            gameCount={games.length}
-            slotPositions={slotPositions}
-            availability={availability}
+          <PlaybookLibrary
+            playbooks={playbookOverviews}
+            onCreate={addPlaybook}
+            onOpen={(playbookId) => navigate({ section: 'playbooks', playbookId })}
           />
         )}
       </div>
-
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-[#d8ded5] bg-white/95 px-3 py-2 shadow-[0_-10px_30px_rgba(16,32,26,0.12)] backdrop-blur safe-bottom">
-        <div className="mx-auto grid max-w-md grid-cols-4 gap-1.5">
-          <BottomNavButton active={workflow === 'planning'} label="Planning" onClick={() => navigateWorkflow('planning')} />
-          <BottomNavButton active={workflow === 'gameday'} label="Gameday" onClick={() => navigateWorkflow('gameday')} />
-          <BottomNavButton active={workflow === 'playbook'} label="Playbook" onClick={() => navigateWorkflow('playbook')} />
-          <BottomNavButton active={workflow === 'play-builder'} label="Builder" onClick={() => navigateWorkflow('play-builder')} />
-        </div>
-      </nav>
     </main>
   )
 }
 
-function AppHeader({
-  teamName,
-  readyCount,
-  games,
-  selectedGameId,
-  setSelectedGameId,
-  workflow,
-  syncStatus,
-  syncMessage,
-  saveNow,
-  loadNow,
-  syncBusy
+/** The underlined switch between the parts of one section. */
+function SubTabs<T extends string>({
+  value,
+  onChange,
+  options
 }: {
-  teamName: string
-  readyCount: number
-  games: Game[]
-  selectedGameId: string
-  setSelectedGameId: (id: string) => void
-  workflow: Workflow
-  syncStatus: SyncStatus
-  syncMessage: string
-  saveNow: () => void
-  loadNow: () => void
-  syncBusy: boolean
+  value: T
+  onChange: (value: T) => void
+  options: Array<{ value: T; label: string }>
 }) {
-  const syncTone =
-    syncStatus === 'error'
-      ? 'bg-[#c2412d] text-white'
-      : syncStatus === 'synced'
-        ? 'bg-[#1f7a4d] text-white'
-        : syncStatus === 'saving' || syncStatus === 'loading'
-          ? 'bg-[#f7c948] text-[#10201a]'
-          : 'bg-[#d9eef6] text-[#10201a]'
-
   return (
-    <header className="sticky top-0 z-30 -mx-3 border-b border-[#d8ded5] bg-[#f7f5ee]/95 px-3 pb-3 pt-2 backdrop-blur sm:-mx-5 sm:px-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-xs font-black uppercase text-[#53665c]">{workflow}</p>
-          <h1 className="truncate font-display text-2xl font-black">{teamName}</h1>
-          <div className="mt-1 flex items-center gap-2">
-            <select
-              value={selectedGameId}
-              onChange={(event) => setSelectedGameId(event.target.value)}
-              aria-label="Game"
-              className="min-w-0 max-w-[190px] truncate rounded-lg border border-[#d8ded5] bg-white px-2 py-1 text-sm font-black outline-none"
-            >
-              {games.map((game) => (
-                <option key={game.id} value={game.id}>
-                  {game.name}
-                </option>
-              ))}
-            </select>
-            <span className="shrink-0 text-xs font-bold text-[#53665c]">{readyCount} here</span>
-          </div>
-        </div>
-        <details className="shrink-0">
-          <summary className={`flex cursor-pointer list-none items-center gap-2 rounded-lg px-3 py-2 text-xs font-black uppercase ${syncTone}`}>
-            <Cloud size={15} />
-            {syncStatus.replace('_', ' ')}
-          </summary>
-          <div className="absolute right-3 mt-2 w-[min(340px,calc(100vw-1.5rem))] rounded-lg border border-[#d8ded5] bg-white p-3 text-sm shadow-xl">
-            <p className="font-black">{syncMessage}</p>
-            <p className="mt-1 text-xs font-bold text-[#53665c]">
-              Everyone with the app shares this team's data — no sign-in needed.
-            </p>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <button type="button" onClick={saveNow} disabled={syncBusy} className="rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40">
-                Save
-              </button>
-              <button type="button" onClick={loadNow} disabled={syncBusy} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black disabled:opacity-40">
-                Refresh
-              </button>
-            </div>
-          </div>
-        </details>
-      </div>
-    </header>
+    <div className="mt-3 flex gap-1 border-b border-[#d8ded5]" role="tablist">
+      {options.map((option) => {
+        const active = option.value === value
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onChange(option.value)}
+            className={`-mb-px border-b-[3px] px-3 py-2 text-sm font-black ${
+              active ? 'border-[#1f7a4d] text-[#10201a]' : 'border-transparent text-[#53665c] hover:text-[#10201a]'
+            }`}
+          >
+            {option.label}
+          </button>
+        )
+      })}
+    </div>
   )
 }
 
@@ -1426,7 +1488,7 @@ function PlayBuilderPage({
 }: {
   plays: PlaybookPlay[]
   formations: Formation[]
-  savePlay: (play: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  savePlay: (play: PlayDraft) => void
   deletePlay: (playId: string) => void
 }) {
   const [playId, setPlayId] = useState<string | null>(null)
@@ -1877,96 +1939,139 @@ function BuiltPlayList({
 }
 
 function PlaybookPage({
+  playbook,
+  canDelete,
   teamName,
+  gameName,
   plays,
+  allPlays,
   formations,
+  callSheets,
+  onBack,
+  renamePlaybook,
+  deletePlaybook,
   savePlay,
   deletePlay,
   saveFormation,
-  deleteFormation
+  deleteFormation,
+  addCallSheet,
+  saveCallSheet,
+  deleteCallSheet
 }: {
+  playbook: Playbook
+  canDelete: boolean
   teamName: string
+  gameName: string
   plays: PlaybookPlay[]
+  allPlays: PlaybookPlay[]
   formations: Formation[]
-  savePlay: (play: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  callSheets: CallSheet[]
+  onBack: () => void
+  renamePlaybook: (name: string) => void
+  deletePlaybook: () => void
+  savePlay: (play: PlayDraft) => void
   deletePlay: (playId: string) => void
   saveFormation: (formation: Omit<Formation, 'teamId' | 'createdAt' | 'updatedAt'>) => void
   deleteFormation: (formationId: string) => void
+  addCallSheet: (name: string) => CallSheet
+  saveCallSheet: (sheet: CallSheet) => void
+  deleteCallSheet: (sheetId: string) => void
 }) {
-  const [tab, setTab] = useState<'plays' | 'formations'>('plays')
+  const [tab, setTab] = useState<'plays' | 'builder' | 'formations'>('plays')
   const [filters, setFilters] = useState<PlayFilters>(emptyPlayFilters)
   const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
   const [openPlayId, setOpenPlayId] = useState<string | null>(null)
   const [actingOnPlayId, setActingOnPlayId] = useState<string | null>(null)
-  const [printing, setPrinting] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [showCallSheets, setShowCallSheets] = useState(false)
+  const [editingDetails, setEditingDetails] = useState(false)
 
   const visiblePlays = filterPlays(plays, formations, filters)
   const openPlay = plays.find((play) => play.id === openPlayId)
   const actingOnPlay = plays.find((play) => play.id === actingOnPlayId)
 
   return (
-    <div className="space-y-4 py-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-display text-xl font-black">Playbook</h2>
-          <p className="text-sm font-bold text-[#53665c]">
-            {plays.length} play{plays.length === 1 ? '' : 's'} · {formations.length} formation
-            {formations.length === 1 ? '' : 's'}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {tab === 'plays' && (
+    <div className="space-y-4 py-5">
+      <div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="-ml-2 flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-black text-[#53665c] hover:bg-white"
+        >
+          <ChevronLeft size={16} />
+          All playbooks
+        </button>
+        <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h1 className="truncate font-display text-3xl font-black">{playbook.name}</h1>
+              <button
+                type="button"
+                onClick={() => setEditingDetails(true)}
+                aria-label="Rename or delete playbook"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#53665c] hover:bg-white"
+              >
+                <Pencil size={15} />
+              </button>
+            </div>
+            <p className="text-sm font-bold text-[#53665c]">
+              {plays.length} play{plays.length === 1 ? '' : 's'} · {callSheets.length} call sheet
+              {callSheets.length === 1 ? '' : 's'}
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2">
             <button
               type="button"
-              onClick={() => setPrinting(true)}
-              disabled={visiblePlays.length === 0}
-              aria-label="Print playbook"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8ded5] bg-white disabled:opacity-40"
+              onClick={() => setShowCallSheets(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-[#10201a] px-3 py-2 text-sm font-black text-white"
             >
-              <Printer size={18} />
+              <ClipboardList size={16} />
+              Call Sheet
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => (tab === 'plays' ? setEditingPlay('new') : setEditingFormation('new'))}
-            disabled={tab === 'plays' && formations.length === 0}
-            aria-label={tab === 'plays' ? 'New play' : 'New formation'}
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#10201a] text-white disabled:opacity-40"
-          >
-            <Plus size={20} />
-          </button>
+            <button
+              type="button"
+              onClick={() => setExporting(true)}
+              disabled={plays.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black disabled:opacity-40"
+            >
+              <FileDown size={16} />
+              Export
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => setTab('plays')}
-          className={`rounded-lg px-3 py-2 text-sm font-black ${tab === 'plays' ? 'bg-[#10201a] text-white' : 'bg-[#f7f5ee] text-[#53665c]'}`}
-        >
-          Plays
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab('formations')}
-          className={`rounded-lg px-3 py-2 text-sm font-black ${
-            tab === 'formations' ? 'bg-[#10201a] text-white' : 'bg-[#f7f5ee] text-[#53665c]'
-          }`}
-        >
-          Formations
-        </button>
-      </div>
+      <SubTabs
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'plays', label: 'Plays' },
+          { value: 'builder', label: 'Builder' },
+          { value: 'formations', label: 'Formations' }
+        ]}
+      />
 
       {tab === 'plays' ? (
         <section className="space-y-3">
-          <input
-            value={filters.search}
-            onChange={(event) => setFilters({ ...filters, search: event.target.value })}
-            placeholder="Search plays"
-            aria-label="Search plays"
-            className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
-          />
+          <div className="flex gap-2">
+            <input
+              value={filters.search}
+              onChange={(event) => setFilters({ ...filters, search: event.target.value })}
+              placeholder="Search plays"
+              aria-label="Search plays"
+              className="min-w-0 flex-1 rounded-lg border border-[#d8ded5] bg-white px-3 py-2.5 outline-none focus:border-[#1f7a4d]"
+            />
+            <button
+              type="button"
+              onClick={() => setEditingPlay('new')}
+              disabled={formations.length === 0}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white disabled:opacity-40"
+            >
+              <Plus size={16} />
+              New Play
+            </button>
+          </div>
 
           <FilterChips
             value={filters.type}
@@ -2002,7 +2107,7 @@ function PlaybookPage({
           <div className="space-y-2">
             {formations.length > 0 && visiblePlays.length === 0 && (
               <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
-                {plays.length === 0 ? 'No plays yet.' : 'No plays match those filters.'}
+                {plays.length === 0 ? 'No plays yet. Draw one with New Play, or write one in the Builder.' : 'No plays match those filters.'}
               </p>
             )}
             {visiblePlays.map((play) => {
@@ -2020,11 +2125,24 @@ function PlaybookPage({
             })}
           </div>
         </section>
+      ) : tab === 'builder' ? (
+        <PlayBuilderPage plays={plays} formations={formations} savePlay={savePlay} deletePlay={deletePlay} />
       ) : (
         <section className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-bold text-[#53665c]">Formations are shared by every playbook.</p>
+            <button
+              type="button"
+              onClick={() => setEditingFormation('new')}
+              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white"
+            >
+              <Plus size={16} />
+              New Formation
+            </button>
+          </div>
           {formations.length === 0 && (
             <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
-              No formations yet. Tap + to place the positions.
+              No formations yet.
             </p>
           )}
           {formations.map((formation) => (
@@ -2034,7 +2152,7 @@ function PlaybookPage({
                   <p className="truncate font-black">{formation.name}</p>
                   <p className="text-xs font-bold text-[#53665c]">
                     {countPlaysByFormation(plays, formation.id)} play
-                    {countPlaysByFormation(plays, formation.id) === 1 ? '' : 's'}
+                    {countPlaysByFormation(plays, formation.id) === 1 ? '' : 's'} in this playbook
                   </p>
                 </div>
                 <button
@@ -2092,7 +2210,8 @@ function PlaybookPage({
       {editingFormation && (
         <FormationEditorSheet
           formation={editingFormation === 'new' ? undefined : editingFormation}
-          playCount={editingFormation === 'new' ? 0 : countPlaysByFormation(plays, editingFormation.id)}
+          // Deleting a formation reaches into every playbook, so count them all.
+          playCount={editingFormation === 'new' ? 0 : countPlaysByFormation(allPlays, editingFormation.id)}
           onSave={(formation) => {
             saveFormation(formation)
             setEditingFormation(null)
@@ -2109,16 +2228,6 @@ function PlaybookPage({
         />
       )}
 
-      {printing && (
-        <PrintPlaybookSheet
-          plays={visiblePlays}
-          formations={formations}
-          teamName={teamName}
-          filtered={visiblePlays.length !== plays.length}
-          onClose={() => setPrinting(false)}
-        />
-      )}
-
       {openPlay && (
         <PlayDetailSheet
           play={openPlay}
@@ -2130,6 +2239,124 @@ function PlaybookPage({
           onClose={() => setOpenPlayId(null)}
         />
       )}
+
+      {exporting && (
+        <PrintPlaybookSheet
+          title={playbook.name}
+          plays={plays}
+          formations={formations}
+          teamName={teamName}
+          onClose={() => setExporting(false)}
+        />
+      )}
+
+      {showCallSheets && (
+        <CallSheetsSheet
+          playbookName={playbook.name}
+          teamName={teamName}
+          defaultName={gameName ? `${gameName} Call Sheet` : 'Call Sheet'}
+          callSheets={callSheets}
+          plays={plays}
+          formations={formations}
+          onCreate={addCallSheet}
+          onSave={saveCallSheet}
+          onDelete={deleteCallSheet}
+          onClose={() => setShowCallSheets(false)}
+        />
+      )}
+
+      {editingDetails && (
+        <PlaybookDetailsSheet
+          playbook={playbook}
+          playCount={plays.length}
+          canDelete={canDelete}
+          onRename={(name) => {
+            renamePlaybook(name)
+            setEditingDetails(false)
+          }}
+          onDelete={deletePlaybook}
+          onClose={() => setEditingDetails(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Rename a playbook, or delete it along with its plays and call sheets. */
+function PlaybookDetailsSheet({
+  playbook,
+  playCount,
+  canDelete,
+  onRename,
+  onDelete,
+  onClose
+}: {
+  playbook: Playbook
+  playCount: number
+  canDelete: boolean
+  onRename: (name: string) => void
+  onDelete: () => void
+  onClose: () => void
+}) {
+  const [name, setName] = useState(playbook.name)
+  const [confirming, setConfirming] = useState(false)
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
+      <form
+        className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onRename(name)
+        }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="font-display text-xl font-black">Playbook</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <input
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          aria-label="Playbook name"
+          className="mt-4 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+        />
+        <button type="submit" disabled={!name.trim()} className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40">
+          Save Name
+        </button>
+
+        {canDelete &&
+          (confirming ? (
+            <div className="mt-3 rounded-lg border border-[#c2412d] p-3">
+              <p className="text-sm font-bold">
+                Delete {playbook.name} and its {playCount} play{playCount === 1 ? '' : 's'} and call sheets? This cannot be undone.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => setConfirming(false)} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
+                  Cancel
+                </button>
+                <button type="button" onClick={onDelete} className="rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white">
+                  Delete
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConfirming(true)}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-[#c2412d] px-3 py-3 font-black text-[#c2412d]"
+            >
+              <Trash2 size={16} />
+              Delete Playbook
+            </button>
+          ))}
+      </form>
     </div>
   )
 }
@@ -2196,7 +2423,7 @@ function PlayEditorSheet({
 }: {
   play?: PlaybookPlay
   formations: Formation[]
-  onSave: (play: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) => void
+  onSave: (play: PlayDraft) => void
   onDelete?: () => void
   onClose: () => void
 }) {
@@ -3872,14 +4099,3 @@ function BenchPicker({
   )
 }
 
-function BottomNavButton({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`min-h-14 rounded-lg text-sm font-black ${active ? 'bg-[#10201a] text-white' : 'bg-[#f7f5ee] text-[#53665c]'}`}
-    >
-      {label}
-    </button>
-  )
-}

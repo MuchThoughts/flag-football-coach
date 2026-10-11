@@ -63,9 +63,9 @@ window, without browser bars.
 
 ## Getting around
 
-The toolbar across the top has **Home**, **Roster** (with **Planning** and
-**Gameday** tabs) and **Playbooks**, plus the game picker and the sync status
-on the right.
+The toolbar across the top has **Playbooks** (where the app opens) and
+**Roster** (with **Planning** and **Gameday** tabs), plus the game picker and
+the sync status on the right.
 
 Under **Playbooks** the team can keep several playbooks. Each play belongs to
 one playbook; formations are shared by all of them. Plays saved before

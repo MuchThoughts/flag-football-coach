@@ -62,8 +62,7 @@ import { LINEUPS_PER_UNIT } from '@/lib/types'
 import PlaybookField from '@/components/PlaybookField'
 import { PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
 import { CallSheetsSheet } from '@/components/CallSheets'
-import HomePage, { type PlaybookOverview } from '@/components/HomePage'
-import PlaybookLibrary from '@/components/PlaybookLibrary'
+import PlaybookLibrary, { type PlaybookOverview } from '@/components/PlaybookLibrary'
 import TopToolbar, { type Section, type SyncStatus } from '@/components/TopToolbar'
 import { createCallSheet, createPlaybook, removePlaysFromCallSheets } from '@/lib/playbooks'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
@@ -158,13 +157,13 @@ function routeFromPath(pathname: string): Route {
   if (first === 'planning' || first === 'gameday') return { section: 'roster', rosterTab: first, playbookId: null }
   if (first === 'playbooks') return { section: 'playbooks', rosterTab: 'planning', playbookId: second || null }
   if (first === 'playbook' || first === 'play-builder') return { section: 'playbooks', rosterTab: 'planning', playbookId: null }
-  return { section: 'home', rosterTab: 'planning', playbookId: null }
+  // The root, /home and anything unknown open on the playbooks.
+  return { section: 'playbooks', rosterTab: 'planning', playbookId: null }
 }
 
 function routePath(route: Route) {
   if (route.section === 'roster') return `/roster/${route.rosterTab}`
-  if (route.section === 'playbooks') return route.playbookId ? `/playbooks/${encodeURIComponent(route.playbookId)}` : '/playbooks'
-  return '/home'
+  return route.playbookId ? `/playbooks/${encodeURIComponent(route.playbookId)}` : '/playbooks'
 }
 
 export default function CoachApp() {
@@ -185,7 +184,7 @@ export default function CoachApp() {
   const [lineups, setLineups] = useState(initialAppState.lineups)
   const [slotPositions, setSlotPositions] = useState(initialAppState.slotPositions)
   const [appSettings, setAppSettings] = useState<AppSettings>(initialAppState.appSettings)
-  const [route, setRoute] = useState<Route>({ section: 'home', rosterTab: 'planning', playbookId: null })
+  const [route, setRoute] = useState<Route>({ section: 'playbooks', rosterTab: 'planning', playbookId: null })
   const [rosterCollapsed, setRosterCollapsed] = useState(false)
   const [selectedLineupId, setSelectedLineupId] = useState(initialAppState.lineups[0].id)
   const [loaded, setLoaded] = useState(false)
@@ -854,19 +853,7 @@ export default function CoachApp() {
       />
 
       <div className="mx-auto w-full max-w-3xl px-3 sm:px-5">
-        {route.section === 'home' ? (
-          <HomePage
-            team={team}
-            game={selectedGame}
-            availableCount={availablePlayers.length}
-            rosterCount={activePlayers.length}
-            summary={gameSummary}
-            playbooks={playbookOverviews}
-            onOpenRoster={(rosterTab) => navigate({ section: 'roster', rosterTab })}
-            onOpenPlaybook={(playbookId) => navigate({ section: 'playbooks', playbookId })}
-            onOpenPlaybooks={() => navigate({ section: 'playbooks', playbookId: null })}
-          />
-        ) : route.section === 'roster' ? (
+        {route.section === 'roster' ? (
           <>
             <h1 className="pt-5 font-display text-3xl font-black">Roster</h1>
             <SubTabs

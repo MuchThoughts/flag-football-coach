@@ -2,7 +2,13 @@
 
 import { useState } from 'react'
 import { BookOpen, ChevronRight, ClipboardList, Plus, X } from 'lucide-react'
-import type { PlaybookOverview } from '@/components/HomePage'
+import type { Playbook } from '@/lib/types'
+
+export interface PlaybookOverview {
+  playbook: Playbook
+  playCount: number
+  callSheetCount: number
+}
 
 /** Every playbook the team keeps; pick one to work in, or start another. */
 export default function PlaybookLibrary({

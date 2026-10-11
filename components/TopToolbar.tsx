@@ -1,15 +1,14 @@
 'use client'
 
-import { BookOpen, ChevronDown, Cloud, CloudOff, House, RefreshCw, Users } from 'lucide-react'
+import { BookOpen, ChevronDown, Cloud, CloudOff, RefreshCw, Users } from 'lucide-react'
 import type { Game } from '@/lib/types'
 
-export type Section = 'home' | 'roster' | 'playbooks'
+export type Section = 'playbooks' | 'roster'
 export type SyncStatus = 'local' | 'loading' | 'synced' | 'saving' | 'error'
 
-const sections: Array<{ value: Section; label: string; icon: typeof House }> = [
-  { value: 'home', label: 'Home', icon: House },
-  { value: 'roster', label: 'Roster', icon: Users },
-  { value: 'playbooks', label: 'Playbooks', icon: BookOpen }
+const sections: Array<{ value: Section; label: string; icon: typeof BookOpen }> = [
+  { value: 'playbooks', label: 'Playbooks', icon: BookOpen },
+  { value: 'roster', label: 'Roster', icon: Users }
 ]
 
 const syncLabels: Record<SyncStatus, string> = {

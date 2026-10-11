@@ -60,3 +60,132 @@ button {
 .safe-bottom {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
+
+/* Exported diagrams carry a fixed size for images; on a page they fill their box. */
+.play-diagram svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Printing the playbook: only the plays, on plain paper. */
+.print-root {
+  display: none;
+}
+
+@media print {
+  html:has(body.printing-playbook),
+  body.printing-playbook {
+    background: #fff;
+  }
+
+  body.printing-playbook > :not(.print-root) {
+    display: none !important;
+  }
+
+  body.printing-playbook > .print-root {
+    display: block;
+    color: #10201a;
+    font-family: Helvetica, Arial, sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    border-bottom: 2px solid #10201a;
+    margin-bottom: 0.2in;
+    padding-bottom: 0.05in;
+  }
+
+  .print-header h1 {
+    margin: 0;
+    font-size: 18pt;
+    font-weight: 900;
+  }
+
+  .print-header p {
+    margin: 0;
+    font-size: 10pt;
+    font-weight: 700;
+  }
+
+  .print-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.2in 0.25in;
+  }
+
+  .print-card {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-full .print-card {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .print-full .print-card:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .print-full .print-card-title h2 {
+    font-size: 22pt;
+  }
+
+  .print-full .play-diagram {
+    width: 85%;
+  }
+
+  .print-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.08in;
+  }
+
+  .print-card-number {
+    display: inline-flex;
+    min-width: 0.24in;
+    height: 0.24in;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: #10201a;
+    color: #fff;
+    font-size: 9pt;
+    font-weight: 900;
+  }
+
+  .print-card-title h2 {
+    margin: 0;
+    font-size: 12pt;
+    font-weight: 900;
+  }
+
+  .print-card-meta {
+    margin: 0.02in 0 0.06in;
+    color: #53665c;
+    font-size: 8pt;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  .print-card-notes {
+    margin: 0.06in 0 0;
+    font-size: 9pt;
+    white-space: pre-wrap;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .print-full .print-card-notes {
+    font-size: 12pt;
+    -webkit-line-clamp: unset;
+  }
+}

@@ -12,6 +12,7 @@ import {
 import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
+import { playDiagramSvg, playFileName } from '../lib/play-svg'
 import {
   classifySteps,
   COMPONENT_GROUPS,
@@ -788,5 +789,43 @@ for (let attempt = 0; attempt < 2000; attempt += 1) {
   }
 }
 assert.equal(roundTripFailures, 0)
+
+// Exported diagrams draw every position, each route with an arrow, and each football.
+{
+  const exportFormation = {
+    id: 'f-export',
+    teamId: 't',
+    name: 'Trips',
+    positions: { QB: { x: 50, y: 70 } },
+    createdAt: '',
+    updatedAt: ''
+  }
+  const svg = playDiagramSvg(
+    {
+      routes: [
+        { id: 'r1', style: 'solid', points: [{ x: 10, y: 52 }, { x: 10, y: 20 }] },
+        { id: 'r2', style: 'dashed', points: [{ x: 50, y: 70 }, { x: 60, y: 30 }] },
+        { id: 'r3', style: 'solid', points: [{ x: 40, y: 40 }] }
+      ],
+      footballs: [{ id: 'b1', x: 30, y: 84 }]
+    },
+    exportFormation
+  )
+  assert.ok(svg.startsWith('<svg xmlns="http://www.w3.org/2000/svg"'))
+  assert.equal((svg.match(/<circle /g) || []).length, 7)
+  // A single point is not a route, so only two lines and two arrows.
+  assert.equal((svg.match(/<polyline /g) || []).length, 2)
+  assert.equal((svg.match(/<polygon /g) || []).length, 2)
+  assert.equal((svg.match(/stroke-dasharray/g) || []).length, 1)
+  assert.equal((svg.match(/<ellipse /g) || []).length, 1)
+  // The formation's QB spot is used; positions it leaves out fall back to defaults.
+  assert.ok(svg.includes('cx="100" cy="70"'))
+  assert.ok(svg.includes('cx="16" cy="52"'))
+  // Missing formations still draw a play from the default spots.
+  assert.equal((playDiagramSvg({ routes: [], footballs: [] }, undefined).match(/<circle /g) || []).length, 7)
+
+  assert.equal(playFileName('Trips Right — Go!', 'png'), 'trips-right-go.png')
+  assert.equal(playFileName('  ', 'png'), 'play.png')
+}
 
 console.log('logic tests passed')

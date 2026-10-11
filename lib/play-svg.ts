@@ -1,0 +1,108 @@
+import { getFormationPosition, PLAYBOOK_SLOTS } from './playbook'
+import { LINE_OF_SCRIMMAGE } from './positions'
+import type { Formation, PlaybookPlay } from './types'
+
+/**
+ * A play as a standalone SVG, for printing and saving as an image. The live field
+ * is built from HTML markers on top of an SVG, which neither prints reliably nor
+ * turns into a picture, so exports draw the whole play here instead.
+ */
+
+export type PlayDiagramTheme = 'paper' | 'turf'
+
+/** Same world as the live field: twice as wide as tall, positions in percentages. */
+const width = 200
+const height = 100
+
+const themes: Record<PlayDiagramTheme, { field: string; yardLine: string; scrimmage: string; route: string; marker: string; markerText: string }> = {
+  // Light enough to print without soaking the page in ink.
+  paper: { field: '#ffffff', yardLine: '#d8ded5', scrimmage: '#53665c', route: '#10201a', marker: '#ffffff', markerText: '#10201a' },
+  turf: { field: '#1f7a4d', yardLine: 'rgba(246,242,223,0.28)', scrimmage: 'rgba(246,242,223,0.75)', route: '#10201a', marker: '#ffffff', markerText: '#10201a' }
+}
+
+function round(value: number) {
+  return Math.round(value * 100) / 100
+}
+
+function toWorld(point: { x: number; y: number }) {
+  return { x: round(point.x * 2), y: round(point.y) }
+}
+
+/** The tip of a route, pointing the way the last segment travels. */
+function arrowHead(points: { x: number; y: number }[], color: string) {
+  const tip = points[points.length - 1]
+  // Hand-drawn routes end in tiny jitters, so aim from a point a little way back.
+  let from = points[points.length - 2]
+  for (let index = points.length - 2; index >= 0; index -= 1) {
+    from = points[index]
+    if (Math.hypot(tip.x - from.x, tip.y - from.y) >= 3) break
+  }
+  const angle = Math.atan2(tip.y - from.y, tip.x - from.x)
+  const size = 3.2
+  const left = { x: tip.x - size * Math.cos(angle - 0.45), y: tip.y - size * Math.sin(angle - 0.45) }
+  const right = { x: tip.x - size * Math.cos(angle + 0.45), y: tip.y - size * Math.sin(angle + 0.45) }
+  return `<polygon points="${round(tip.x)},${round(tip.y)} ${round(left.x)},${round(left.y)} ${round(right.x)},${round(right.y)}" fill="${color}"/>`
+}
+
+function football(point: { x: number; y: number }) {
+  const { x, y } = toWorld(point)
+  return (
+    `<g transform="translate(${x} ${y}) rotate(-20) scale(0.42)">` +
+    '<ellipse rx="9" ry="5.6" fill="#8a4b23" stroke="#2f1b0d" stroke-width="1.4"/>' +
+    '<line x1="-5.2" y1="0" x2="5.2" y2="0" stroke="#f7f5ee" stroke-width="1.4"/>' +
+    '<line x1="-2.8" y1="-1.8" x2="-2.8" y2="1.8" stroke="#f7f5ee" stroke-width="1.2"/>' +
+    '<line x1="0" y1="-2.2" x2="0" y2="2.2" stroke="#f7f5ee" stroke-width="1.2"/>' +
+    '<line x1="2.8" y1="-1.8" x2="2.8" y2="1.8" stroke="#f7f5ee" stroke-width="1.2"/>' +
+    '</g>'
+  )
+}
+
+export function playDiagramSvg(
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'>,
+  formation: Formation | undefined,
+  theme: PlayDiagramTheme = 'paper'
+) {
+  const colors = themes[theme]
+  const parts: string[] = []
+
+  parts.push(`<rect width="${width}" height="${height}" fill="${colors.field}"/>`)
+  for (let x = 20; x < width; x += 20) {
+    parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${height}" stroke="${colors.yardLine}" stroke-width="0.4"/>`)
+  }
+  parts.push(
+    `<line x1="0" y1="${LINE_OF_SCRIMMAGE}" x2="${width}" y2="${LINE_OF_SCRIMMAGE}" stroke="${colors.scrimmage}" stroke-width="0.5"/>`
+  )
+
+  play.routes.forEach((route) => {
+    if (route.points.length < 2) return
+    const points = route.points.map(toWorld)
+    const dash = route.style === 'dashed' ? ' stroke-dasharray="3 2.2"' : ''
+    parts.push(
+      `<polyline points="${points.map((point) => `${point.x},${point.y}`).join(' ')}" fill="none" stroke="${colors.route}" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round"${dash}/>`
+    )
+    parts.push(arrowHead(points, colors.route))
+  })
+
+  PLAYBOOK_SLOTS.forEach((slot) => {
+    const { x, y } = toWorld(getFormationPosition(slot.code, formation))
+    const fontSize = slot.shortName.length > 1 ? 3.4 : 4.2
+    parts.push(
+      `<circle cx="${x}" cy="${y}" r="4.4" fill="${colors.marker}" stroke="${colors.markerText}" stroke-width="0.8"/>` +
+        `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSize}" fill="${colors.markerText}">${slot.shortName}</text>`
+    )
+  })
+
+  play.footballs.forEach((item) => parts.push(football(item)))
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width * 6}" height="${height * 6}">${parts.join('')}</svg>`
+}
+
+/** File names stay readable but safe on every platform. */
+export function playFileName(name: string, extension: string) {
+  const base = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `${base || 'play'}.${extension}`
+}

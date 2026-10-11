@@ -10,6 +10,7 @@ import {
   Copy,
   Minimize2,
   Plus,
+  Printer,
   RotateCcw,
   Save,
   Trash2,
@@ -58,6 +59,7 @@ import {
 } from '@/lib/play-builder'
 import { LINEUPS_PER_UNIT } from '@/lib/types'
 import PlaybookField from '@/components/PlaybookField'
+import { PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
 import { getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { snapToField, type SnapResult } from '@/lib/snapping'
@@ -810,6 +812,7 @@ export default function CoachApp() {
           <PlayBuilderPage plays={plays} formations={formations} savePlay={savePlay} deletePlay={deletePlay} />
         ) : workflow === 'playbook' ? (
           <PlaybookPage
+            teamName={team.name}
             plays={plays}
             formations={formations}
             savePlay={savePlay}
@@ -1874,6 +1877,7 @@ function BuiltPlayList({
 }
 
 function PlaybookPage({
+  teamName,
   plays,
   formations,
   savePlay,
@@ -1881,6 +1885,7 @@ function PlaybookPage({
   saveFormation,
   deleteFormation
 }: {
+  teamName: string
   plays: PlaybookPlay[]
   formations: Formation[]
   savePlay: (play: Omit<PlaybookPlay, 'teamId' | 'createdAt' | 'updatedAt'>) => void
@@ -1894,6 +1899,7 @@ function PlaybookPage({
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
   const [openPlayId, setOpenPlayId] = useState<string | null>(null)
   const [actingOnPlayId, setActingOnPlayId] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
 
   const visiblePlays = filterPlays(plays, formations, filters)
   const openPlay = plays.find((play) => play.id === openPlayId)
@@ -1909,15 +1915,28 @@ function PlaybookPage({
             {formations.length === 1 ? '' : 's'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => (tab === 'plays' ? setEditingPlay('new') : setEditingFormation('new'))}
-          disabled={tab === 'plays' && formations.length === 0}
-          aria-label={tab === 'plays' ? 'New play' : 'New formation'}
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#10201a] text-white disabled:opacity-40"
-        >
-          <Plus size={20} />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          {tab === 'plays' && (
+            <button
+              type="button"
+              onClick={() => setPrinting(true)}
+              disabled={visiblePlays.length === 0}
+              aria-label="Print playbook"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-[#d8ded5] bg-white disabled:opacity-40"
+            >
+              <Printer size={18} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => (tab === 'plays' ? setEditingPlay('new') : setEditingFormation('new'))}
+            disabled={tab === 'plays' && formations.length === 0}
+            aria-label={tab === 'plays' ? 'New play' : 'New formation'}
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#10201a] text-white disabled:opacity-40"
+          >
+            <Plus size={20} />
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -2090,6 +2109,16 @@ function PlaybookPage({
         />
       )}
 
+      {printing && (
+        <PrintPlaybookSheet
+          plays={visiblePlays}
+          formations={formations}
+          teamName={teamName}
+          filtered={visiblePlays.length !== plays.length}
+          onClose={() => setPrinting(false)}
+        />
+      )}
+
       {openPlay && (
         <PlayDetailSheet
           play={openPlay}
@@ -2147,9 +2176,12 @@ function PlayDetailSheet({
 
         {play.notes && <p className="mt-3 whitespace-pre-wrap text-sm font-bold text-[#53665c]">{play.notes}</p>}
 
-        <button type="button" onClick={onEdit} className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
-          Edit Play
-        </button>
+        <div className="mt-3 space-y-2">
+          <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
+            Edit Play
+          </button>
+          <SavePlayImageButton play={play} formation={formation} />
+        </div>
       </div>
     </div>
   )

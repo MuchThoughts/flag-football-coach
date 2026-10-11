@@ -51,6 +51,25 @@ asks you to identify the team first rather than guessing, because every device
 that ever signed up got its own team and the newest snapshot is often an
 untouched one.
 
+## Installing on iPhone, iPad and Mac
+
+Host the app anywhere with HTTPS (Vercel's free Hobby plan works), then open
+the URL and add it like an app. It gets its own icon and opens in its own
+window, without browser bars.
+
+- **iPhone / iPad:** in Safari, tap Share → **Add to Home Screen**.
+- **Mac:** in Safari, choose File → **Add to Dock**. In Chrome, use the install
+  icon in the address bar.
+
+## Exporting the playbook
+
+- **Print or PDF:** on the Playbook tab, tap the printer button. It prints the
+  plays your filters show, six to a page or one per page, with or without
+  notes. Choose **Save as PDF** in the print dialog to keep a file.
+- **One play as an image:** open a play and tap **Save as Image**. On a phone
+  the share sheet opens (Save Image, Messages, AirDrop); elsewhere a PNG
+  downloads.
+
 ## Verification
 
 ```bash

@@ -158,6 +158,7 @@ export type PlayArea = 'deep' | 'sidelines' | 'middle'
 export interface Formation {
   id: string
   teamId: string
+  playbookId: string
   name: string
   positions: SlotPositions
   createdAt: string
@@ -174,11 +175,20 @@ export interface PlayStep {
   fake?: boolean
 }
 
+/** One player a playbook draws on the field, with the label shown in their circle. */
+export interface PlaybookPosition {
+  /** Stable key that formations place; the label can change without moving anyone. */
+  code: string
+  label: string
+}
+
 /** A named collection of plays, like an offense for one season or one opponent. */
 export interface Playbook {
   id: string
   teamId: string
   name: string
+  /** Who is on the field in this playbook, in order. */
+  positions: PlaybookPosition[]
   createdAt: string
   updatedAt: string
 }

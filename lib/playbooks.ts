@@ -1,4 +1,5 @@
-import type { CallSheet, CallSheetSection, Playbook, PlaybookPlay } from './types'
+import { DEFAULT_POSITIONS, layoutPositions } from './playbook'
+import type { CallSheet, CallSheetSection, Formation, Playbook, PlaybookPlay, PlaybookPosition } from './types'
 
 /** Plays written before there were several playbooks all land in this one. */
 export const MAIN_PLAYBOOK_ID = 'playbook-main'
@@ -8,29 +9,80 @@ function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-export function createPlaybook(teamId: string, name: string, id = uid('playbook'), now = new Date().toISOString()): Playbook {
-  return { id, teamId, name: name.trim() || 'Untitled Playbook', createdAt: now, updatedAt: now }
+export function createPlaybook(
+  teamId: string,
+  name: string,
+  positions: PlaybookPosition[] = DEFAULT_POSITIONS,
+  id = uid('playbook'),
+  now = new Date().toISOString()
+): Playbook {
+  return {
+    id,
+    teamId,
+    name: name.trim() || 'Untitled Playbook',
+    positions: positions.map((position) => ({ code: position.code, label: position.label.trim() })),
+    createdAt: now,
+    updatedAt: now
+  }
+}
+
+/** A new playbook comes with one formation so a play can be drawn straight away. */
+export function starterFormation(playbook: Playbook, now = new Date().toISOString()): Formation {
+  return {
+    id: uid('formation'),
+    teamId: playbook.teamId,
+    playbookId: playbook.id,
+    name: 'Base',
+    positions: layoutPositions(playbook.positions),
+    createdAt: now,
+    updatedAt: now
+  }
+}
+
+function validPositions(positions: PlaybookPosition[] | undefined) {
+  return Array.isArray(positions) && positions.length > 0 && positions.every((position) => position && position.code)
 }
 
 /**
- * Every play has to live in a playbook. A state with none gets the main one, and
- * a play pointing at a playbook that is gone moves to the first one left.
+ * Every play has to live in a playbook, and every formation too. A state with
+ * no playbooks gets the main one, and a play pointing at a playbook that is
+ * gone moves to the first one left.
+ *
+ * Formations used to be shared by every playbook. The ones that belong to
+ * nobody go to the first playbook, and any other playbook with plays drawn on
+ * one gets its own copy, so editing it in one playbook leaves the rest alone.
  */
 export function ensurePlaybooks(
   teamId: string,
   playbooks: Playbook[] | undefined,
   plays: PlaybookPlay[],
+  formations: Formation[],
   now: string
-): { playbooks: Playbook[]; plays: PlaybookPlay[] } {
-  const kept = (playbooks || []).filter((playbook) => playbook && playbook.id)
-  const all = kept.length > 0 ? kept : [createPlaybook(teamId, MAIN_PLAYBOOK_NAME, MAIN_PLAYBOOK_ID, now)]
+): { playbooks: Playbook[]; plays: PlaybookPlay[]; formations: Formation[] } {
+  const kept = (playbooks || [])
+    .filter((playbook) => playbook && playbook.id)
+    .map((playbook) => (validPositions(playbook.positions) ? playbook : { ...playbook, positions: DEFAULT_POSITIONS }))
+  const all = kept.length > 0 ? kept : [createPlaybook(teamId, MAIN_PLAYBOOK_NAME, DEFAULT_POSITIONS, MAIN_PLAYBOOK_ID, now)]
+  const ids = new Set(all.map((playbook) => playbook.id))
   const fallbackId = all[0].id
-  return {
-    playbooks: all,
-    plays: plays.map((play) =>
-      play.playbookId && all.some((playbook) => playbook.id === play.playbookId) ? play : { ...play, playbookId: fallbackId }
-    )
-  }
+
+  const placedPlays = plays.map((play) => (play.playbookId && ids.has(play.playbookId) ? play : { ...play, playbookId: fallbackId }))
+  const ownedFormations = formations.map((formation) =>
+    formation.playbookId && ids.has(formation.playbookId) ? formation : { ...formation, playbookId: fallbackId }
+  )
+
+  const copies: Formation[] = []
+  const nextPlays = placedPlays.map((play) => {
+    const formation = ownedFormations.find((item) => item.id === play.formationId)
+    if (!formation || formation.playbookId === play.playbookId) return play
+    const copyId = `${formation.id}--${play.playbookId}`
+    if (!copies.some((item) => item.id === copyId) && !ownedFormations.some((item) => item.id === copyId)) {
+      copies.push({ ...formation, id: copyId, playbookId: play.playbookId })
+    }
+    return { ...play, formationId: copyId }
+  })
+
+  return { playbooks: all, plays: nextPlays, formations: [...ownedFormations, ...copies] }
 }
 
 /** Situations a youth flag call sheet is usually split into. */

@@ -13,6 +13,7 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
+import { DEFAULT_POSITIONS, layoutPositions, positionLabelsValid, suggestedPositions } from '../lib/playbook'
 import {
   createCallSheet,
   createPlaybook,
@@ -20,7 +21,8 @@ import {
   MAIN_PLAYBOOK_ID,
   moveItem,
   numberCallSheet,
-  removePlaysFromCallSheets
+  removePlaysFromCallSheets,
+  starterFormation
 } from '../lib/playbooks'
 import {
   classifySteps,
@@ -54,7 +56,7 @@ import { compareLineups, previousDrive } from '../lib/substitutions'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
-import type { AppState, PlaybookPlay, ResolvedDrive } from '../lib/types'
+import type { AppState, Playbook, PlaybookPlay, ResolvedDrive } from '../lib/types'
 import { createLineup, createLineups, defaultLineupSlot, findLineup, lineupId, resolveDrive, resolveDrives } from '../lib/lineups'
 
 function assignedIds(assignments: Record<string, string | null>) {
@@ -806,6 +808,7 @@ assert.equal(roundTripFailures, 0)
   const exportFormation = {
     id: 'f-export',
     teamId: 't',
+    playbookId: 'playbook-main',
     name: 'Trips',
     positions: { QB: { x: 50, y: 70 } },
     createdAt: '',
@@ -865,8 +868,8 @@ assert.equal(roundTripFailures, 0)
   assert.deepEqual(upgraded.callSheets, [])
 
   // A play whose playbook is gone moves to the first one left; playbooks the coach made stay.
-  const fall = createPlaybook('t', 'Fall Offense', 'playbook-fall')
-  const kept = ensurePlaybooks('t', [fall], [bookPlay('a', 'playbook-gone', 'run'), bookPlay('b', 'playbook-fall', 'pass')], '')
+  const fall = createPlaybook('t', 'Fall Offense', DEFAULT_POSITIONS, 'playbook-fall')
+  const kept = ensurePlaybooks('t', [fall], [bookPlay('a', 'playbook-gone', 'run'), bookPlay('b', 'playbook-fall', 'pass')], [], '')
   assert.deepEqual(kept.playbooks.map((item) => item.id), ['playbook-fall'])
   assert.deepEqual(kept.plays.map((play) => play.playbookId), ['playbook-fall', 'playbook-fall'])
 
@@ -910,6 +913,74 @@ assert.equal(roundTripFailures, 0)
   assert.deepEqual(moveItem(['a', 'b', 'c'], 0, 1), ['b', 'a', 'c'])
   assert.deepEqual(moveItem(['a', 'b', 'c'], 0, -1), ['a', 'b', 'c'])
   assert.deepEqual(moveItem(['a', 'b', 'c'], 2, 1), ['a', 'b', 'c'])
+}
+
+// ---- Players and formations belong to each playbook ----
+{
+  // Seven players gives the original lineup; other counts get a sensible one.
+  assert.deepEqual(suggestedPositions(7).map((item) => item.label), ['1', '2', 'C', '3', '4', 'QB', 'RB'])
+  assert.deepEqual(suggestedPositions(5).map((item) => item.label), ['1', '2', 'C', '3', 'QB'])
+  assert.deepEqual(suggestedPositions(3).map((item) => item.label), ['1', '2', 'QB'])
+  assert.equal(suggestedPositions(40).length, 11)
+  assert.equal(suggestedPositions(1).length, 3)
+
+  // The original seven keep their exact spots; anything else spreads along the line.
+  assert.deepEqual(layoutPositions(DEFAULT_POSITIONS), defaultFormationPositions())
+  const five = [
+    { code: 'x', label: 'X' },
+    { code: 'c', label: 'C' },
+    { code: 'z', label: 'Z' },
+    { code: 'q', label: 'QB' },
+    { code: 'h', label: 'HB' }
+  ]
+  const spots = layoutPositions(five)
+  assert.deepEqual(spots.x, { x: 8, y: LINE_OF_SCRIMMAGE })
+  assert.deepEqual(spots.c, { x: 50, y: LINE_OF_SCRIMMAGE })
+  assert.deepEqual(spots.z, { x: 92, y: LINE_OF_SCRIMMAGE })
+  assert.deepEqual(spots.q, { x: 50, y: 72 })
+  assert.equal(spots.h.y, 84)
+  assert.deepEqual(getFormationPosition('z', undefined, five), { x: 92, y: LINE_OF_SCRIMMAGE })
+
+  assert.equal(positionLabelsValid(five), true)
+  assert.equal(positionLabelsValid([...five, { code: 'dup', label: 'x ' }]), false)
+  assert.equal(positionLabelsValid([...five, { code: 'blank', label: '  ' }]), false)
+
+  // A new playbook keeps its players and gets one formation laid out for them.
+  const flag5 = createPlaybook('t', 'Five on Five', five, 'playbook-five')
+  assert.deepEqual(flag5.positions.map((item) => item.label), ['X', 'C', 'Z', 'QB', 'HB'])
+  const base = starterFormation(flag5)
+  assert.equal(base.playbookId, 'playbook-five')
+  assert.deepEqual(Object.keys(base.positions).sort(), ['c', 'h', 'q', 'x', 'z'])
+
+  // Diagrams draw the playbook's own players, with labels made safe for markup.
+  const fiveSvg = playDiagramSvg({ routes: [], footballs: [] }, base, [...five.slice(0, 4), { code: 'h', label: '<b>' }])
+  assert.equal((fiveSvg.match(/<circle /g) || []).length, 5)
+  assert.ok(fiveSvg.includes('&lt;b&gt;'))
+  assert.ok(!fiveSvg.includes('<b>'))
+
+  // Shared formations split up: unowned ones go to the first playbook, and any
+  // other playbook drawing on one gets its own copy.
+  const shared = { ...base, id: 'f-shared', playbookId: '' }
+  const split = ensurePlaybooks(
+    't',
+    [createPlaybook('t', 'Main', DEFAULT_POSITIONS, 'pb-a'), createPlaybook('t', 'Other', DEFAULT_POSITIONS, 'pb-b')],
+    [
+      { ...samplePlay, id: 'pa', playbookId: 'pb-a', formationId: 'f-shared' },
+      { ...samplePlay, id: 'pb1', playbookId: 'pb-b', formationId: 'f-shared' },
+      { ...samplePlay, id: 'pb2', playbookId: 'pb-b', formationId: 'f-shared' }
+    ],
+    [shared],
+    ''
+  )
+  assert.deepEqual(split.formations.map((item) => `${item.id}@${item.playbookId}`), ['f-shared@pb-a', 'f-shared--pb-b@pb-b'])
+  assert.deepEqual(split.plays.map((play) => play.formationId), ['f-shared', 'f-shared--pb-b', 'f-shared--pb-b'])
+
+  // Playbooks saved before players existed get the original seven.
+  const oldBook = { ...flag5, positions: undefined } as unknown as Playbook
+  assert.deepEqual(ensurePlaybooks('t', [oldBook], [], [], '').playbooks[0].positions, DEFAULT_POSITIONS)
+
+  // A fresh app's seeded formations belong to the main playbook.
+  assert.ok(migrateAppState(initialAppState).formations.every((item) => item.playbookId === MAIN_PLAYBOOK_ID))
 }
 
 console.log('logic tests passed')

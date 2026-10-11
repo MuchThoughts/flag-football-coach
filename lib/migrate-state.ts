@@ -269,6 +269,8 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
       formation = {
         id: `formation-${formationName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
         teamId: legacy.teamId,
+        // Placed in a playbook along with the rest once playbooks are sorted out.
+        playbookId: '',
         name: formationName,
         positions: defaultFormationPositions(),
         createdAt: legacyTimestamp,
@@ -362,7 +364,7 @@ export function migrateAppState(saved: AppState): AppState {
   const migrated = migratePlaybook(state)
   const seeded = seedPhinsPlaybook({ ...state, plays: migrated.plays, formations: migrated.formations })
 
-  const collections = ensurePlaybooks(seeded.team.id, seeded.playbooks, seeded.plays, legacyTimestamp)
+  const collections = ensurePlaybooks(seeded.team.id, seeded.playbooks, seeded.plays, seeded.formations, legacyTimestamp)
   const playIds = new Set(collections.plays.map((play) => play.id))
   const playbookIds = new Set(collections.playbooks.map((playbook) => playbook.id))
   // A sheet whose playbook is gone has nothing to call from.

@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Download, Printer, X } from 'lucide-react'
+import { usePositions } from '@/components/PositionsContext'
 import { playDiagramSvg, playFileName, type PlayDiagramTheme } from '@/lib/play-svg'
-import type { Formation, PlaybookPlay } from '@/lib/types'
+import type { Formation, PlaybookPlay, PlaybookPosition } from '@/lib/types'
 
 export function PlayDiagram({
   play,
@@ -15,12 +16,13 @@ export function PlayDiagram({
   formation?: Formation
   theme?: PlayDiagramTheme
 }) {
+  const positions = usePositions()
   return (
     <div
       className="play-diagram w-full overflow-hidden rounded border border-[#d8ded5]"
       style={{ aspectRatio: '2 / 1' }}
-      // The markup is built entirely from numbers and the fixed position labels.
-      dangerouslySetInnerHTML={{ __html: playDiagramSvg(play, formation, theme) }}
+      // The markup is built from numbers, with the position labels escaped.
+      dangerouslySetInnerHTML={{ __html: playDiagramSvg(play, formation, positions, theme) }}
     />
   )
 }
@@ -29,8 +31,8 @@ export function PlayDiagram({
  * Turns a play into a PNG. On a phone the share sheet offers Save Image, which is
  * where coaches expect it; anywhere else the file downloads.
  */
-export async function savePlayImage(play: PlaybookPlay, formation?: Formation) {
-  const svg = playDiagramSvg(play, formation, 'turf')
+export async function savePlayImage(play: PlaybookPlay, formation: Formation | undefined, positions: PlaybookPosition[]) {
+  const svg = playDiagramSvg(play, formation, positions, 'turf')
   const image = new Image()
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
   try {
@@ -68,6 +70,7 @@ export async function savePlayImage(play: PlaybookPlay, formation?: Formation) {
 export function SavePlayImageButton({ play, formation }: { play: PlaybookPlay; formation?: Formation }) {
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
+  const positions = usePositions()
 
   return (
     <button
@@ -77,7 +80,7 @@ export function SavePlayImageButton({ play, formation }: { play: PlaybookPlay; f
         setSaving(true)
         setFailed(false)
         try {
-          await savePlayImage(play, formation)
+          await savePlayImage(play, formation, positions)
         } catch {
           setFailed(true)
         } finally {

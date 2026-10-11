@@ -67,9 +67,12 @@ The toolbar across the top has **Playbooks** (where the app opens) and
 **Roster** (with **Planning** and **Gameday** tabs), plus the game picker and
 the sync status on the right.
 
-Under **Playbooks** the team can keep several playbooks. Each play belongs to
-one playbook; formations are shared by all of them. Plays saved before
-playbooks existed are in **Main Playbook**.
+Under **Playbooks** the team can keep several playbooks. A new playbook asks
+how many players are on the field (3 to 11) and what each one's circle says
+(QB, C, X, 1, and so on); the pencil next to a playbook's name changes them
+later. Each playbook has its own formations and plays, so a 5v5 playbook and
+a 7v7 one never mix. Plays saved before playbooks existed are in
+**Main Playbook**, with the original seven players.
 
 ## Call sheets
 

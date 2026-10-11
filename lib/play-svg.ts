@@ -1,6 +1,6 @@
-import { getFormationPosition, PLAYBOOK_SLOTS } from './playbook'
+import { DEFAULT_POSITIONS, getFormationPosition } from './playbook'
 import { LINE_OF_SCRIMMAGE } from './positions'
-import type { Formation, PlaybookPlay } from './types'
+import type { Formation, PlaybookPlay, PlaybookPosition } from './types'
 
 /**
  * A play as a standalone SVG, for printing and saving as an image. The live field
@@ -18,6 +18,11 @@ const themes: Record<PlayDiagramTheme, { field: string; yardLine: string; scrimm
   // Light enough to print without soaking the page in ink.
   paper: { field: '#ffffff', yardLine: '#d8ded5', scrimmage: '#53665c', route: '#10201a', marker: '#ffffff', markerText: '#10201a' },
   turf: { field: '#1f7a4d', yardLine: 'rgba(246,242,223,0.28)', scrimmage: 'rgba(246,242,223,0.75)', route: '#10201a', marker: '#ffffff', markerText: '#10201a' }
+}
+
+/** Labels are typed by the coach, so they are escaped before going into markup. */
+function escapeXml(text: string) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 }
 
 function round(value: number) {
@@ -60,6 +65,7 @@ function football(point: { x: number; y: number }) {
 export function playDiagramSvg(
   play: Pick<PlaybookPlay, 'routes' | 'footballs'>,
   formation: Formation | undefined,
+  positions: PlaybookPosition[] = DEFAULT_POSITIONS,
   theme: PlayDiagramTheme = 'paper'
 ) {
   const colors = themes[theme]
@@ -83,12 +89,12 @@ export function playDiagramSvg(
     parts.push(arrowHead(points, colors.route))
   })
 
-  PLAYBOOK_SLOTS.forEach((slot) => {
-    const { x, y } = toWorld(getFormationPosition(slot.code, formation))
-    const fontSize = slot.shortName.length > 1 ? 3.4 : 4.2
+  positions.forEach((slot) => {
+    const { x, y } = toWorld(getFormationPosition(slot.code, formation, positions))
+    const fontSize = slot.label.length > 2 ? 2.7 : slot.label.length > 1 ? 3.4 : 4.2
     parts.push(
       `<circle cx="${x}" cy="${y}" r="4.4" fill="${colors.marker}" stroke="${colors.markerText}" stroke-width="0.8"/>` +
-        `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSize}" fill="${colors.markerText}">${slot.shortName}</text>`
+        `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSize}" fill="${colors.markerText}">${escapeXml(slot.label)}</text>`
     )
   })
 

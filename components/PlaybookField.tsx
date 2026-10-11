@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minus, Plus, X } from 'lucide-react'
-import { PLAYBOOK_SLOTS } from '@/lib/playbook'
+import { usePositions } from '@/components/PositionsContext'
+import { layoutPositions } from '@/lib/playbook'
 import { LINE_OF_SCRIMMAGE } from '@/lib/positions'
 import { snapToField, type SnapResult } from '@/lib/snapping'
 import type { FieldPoint, PlayFootball, PlayRoute, SlotPositions } from '@/lib/types'
@@ -105,14 +106,16 @@ export default function PlaybookField({
   const footballDragRef = useRef<{ id: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
   const lastTapRef = useRef<{ routeId: string; at: number } | null>(null)
 
+  const slots = usePositions()
+  const startingSpots = layoutPositions(slots)
   const drawable = Boolean(onRoutesChange)
   const fullscreen = fullscreenOnLandscape && landscape && !fullscreenOff
 
   /** Everything already on the field, for snapping and alignment guides. */
   function markerPoints(exclude?: string): FieldPoint[] {
     return [
-      ...PLAYBOOK_SLOTS.filter((slot) => slot.code !== exclude).map(
-        (slot) => positions[slot.code] || { x: slot.x, y: slot.y }
+      ...slots.filter((slot) => slot.code !== exclude).map(
+        (slot) => positions[slot.code] || startingSpots[slot.code] || { x: 50, y: 50 }
       ),
       ...footballs.filter((football) => football.id !== exclude).map((football) => ({ x: football.x, y: football.y }))
     ]
@@ -382,8 +385,8 @@ export default function PlaybookField({
 
         </svg>
 
-        {PLAYBOOK_SLOTS.map((slot) => {
-          const position = positions[slot.code] || { x: slot.x, y: slot.y }
+        {slots.map((slot) => {
+          const position = positions[slot.code] || startingSpots[slot.code] || { x: 50, y: 50 }
           const isDragging = draggingSlot === slot.code
           return (
             <div
@@ -441,7 +444,7 @@ export default function PlaybookField({
                   isDragging ? 'scale-110 ring-2 ring-[#f7c948]' : ''
                 }`}
               >
-                {slot.shortName}
+                <span className={slot.label.length > 2 ? 'text-[0.8em] tracking-tight' : ''}>{slot.label}</span>
               </div>
             </div>
           )

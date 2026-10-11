@@ -1,4 +1,5 @@
 import { defaultFormationPositions } from './playbook'
+import { MAIN_PLAYBOOK_ID } from './playbooks'
 import type { Formation, SlotPositions } from './types'
 
 /**
@@ -77,6 +78,8 @@ function formationId(specId: string) {
 const baseFormations: Formation[] = formationSpecs.map((spec) => ({
   id: formationId(spec.id),
   teamId: '',
+  // The seed is the main playbook's; the migration moves it if that playbook is gone.
+  playbookId: MAIN_PLAYBOOK_ID,
   name: spec.name,
   positions: positions(spec.spots),
   createdAt: seedTime,

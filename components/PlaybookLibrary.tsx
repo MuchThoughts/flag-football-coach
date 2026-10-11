@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { BookOpen, ChevronRight, ClipboardList, Plus, X } from 'lucide-react'
-import type { Playbook } from '@/lib/types'
+import PositionsEditor from '@/components/PositionsEditor'
+import { positionLabelsValid, suggestedPositions } from '@/lib/playbook'
+import type { Playbook, PlaybookPosition } from '@/lib/types'
 
 export interface PlaybookOverview {
   playbook: Playbook
@@ -17,11 +19,13 @@ export default function PlaybookLibrary({
   onOpen
 }: {
   playbooks: PlaybookOverview[]
-  onCreate: (name: string) => void
+  onCreate: (name: string, positions: PlaybookPosition[]) => void
   onOpen: (playbookId: string) => void
 }) {
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
+  const [positions, setPositions] = useState<PlaybookPosition[]>(() => suggestedPositions(7))
+  const ready = name.trim() !== '' && positionLabelsValid(positions)
 
   return (
     <div className="space-y-4 py-5">
@@ -54,6 +58,7 @@ export default function PlaybookLibrary({
             <span className="min-w-0 flex-1">
               <span className="block truncate font-display text-lg font-black">{playbook.name}</span>
               <span className="flex items-center gap-3 text-xs font-bold text-[#53665c]">
+                <span>{playbook.positions.length} players</span>
                 <span>
                   {playCount} play{playCount === 1 ? '' : 's'}
                 </span>
@@ -71,13 +76,14 @@ export default function PlaybookLibrary({
       {creating && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
           <form
-            className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom"
+            className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom"
             onSubmit={(event) => {
               event.preventDefault()
-              if (!name.trim()) return
-              onCreate(name)
+              if (!ready) return
+              onCreate(name, positions)
               setCreating(false)
               setName('')
+              setPositions(suggestedPositions(7))
             }}
           >
             <div className="flex items-center justify-between gap-3">
@@ -99,10 +105,12 @@ export default function PlaybookLibrary({
               aria-label="Playbook name"
               className="mt-4 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
             />
-            <p className="mt-2 text-xs font-bold text-[#53665c]">Formations are shared by every playbook.</p>
+            <div className="mt-4 border-t border-[#eef0ea] pt-4">
+              <PositionsEditor positions={positions} onChange={setPositions} mode="create" />
+            </div>
             <button
               type="submit"
-              disabled={!name.trim()}
+              disabled={!ready}
               className="mt-4 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40"
             >
               Create Playbook

@@ -1,6 +1,6 @@
 import { LINE_OF_SCRIMMAGE } from './positions'
 import { gridStepX, gridStepY } from './snapping'
-import type { FieldPoint, Formation, SlotPositions } from './types'
+import type { FieldPoint, Formation, PlaybookPosition, SlotPositions } from './types'
 
 /**
  * Moving, selecting and lining up players on the formation page. Positions are
@@ -122,4 +122,41 @@ export function moveLine(spots: SlotPositions, from: number, to: number): { line
     return moved
   }, {})
   return { line, spots: next }
+}
+
+/**
+ * Where the center lines up across the field: the player named C, else the
+ * middle of the offensive line, else the middle of the field.
+ */
+export function centerX(spots: SlotPositions, positions: PlaybookPosition[]) {
+  const named = positions.find((position) => /^c(tr)?$/i.test(position.label.trim()) && spots[position.code])
+  if (named) return spots[named.code].x
+  const line = positions.filter((position) => position.type === 'OL' && spots[position.code])
+  if (line.length > 0) return line.reduce((sum, position) => sum + spots[position.code].x, 0) / line.length
+  return 50
+}
+
+/**
+ * Mirrors a formation left to right around the center, for making the other
+ * side's version. Linemen keep their spots, so a left guard stays on the left.
+ */
+export function flipFormation(spots: SlotPositions, positions: PlaybookPosition[]): SlotPositions {
+  const axis = centerX(spots, positions)
+  const linemen = new Set(positions.filter((position) => position.type === 'OL').map((position) => position.code))
+  return Object.entries(spots).reduce<SlotPositions>((flipped, [code, spot]) => {
+    flipped[code] = linemen.has(code)
+      ? spot
+      : { x: round(clamp(2 * axis - spot.x, FIELD_MARGIN_X, 100 - FIELD_MARGIN_X)), y: spot.y }
+    return flipped
+  }, {})
+}
+
+/** "Trips Right" becomes "Trips Left" and the other way round, keeping capitals. */
+export function flipName(name: string) {
+  return name.replace(/\b(left|right)\b/gi, (word) => {
+    const swapped = word.toLowerCase() === 'left' ? 'right' : 'left'
+    if (word === word.toUpperCase()) return swapped.toUpperCase()
+    if (word[0] === word[0].toUpperCase()) return swapped[0].toUpperCase() + swapped.slice(1)
+    return swapped
+  })
 }

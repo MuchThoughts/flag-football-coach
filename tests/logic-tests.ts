@@ -13,7 +13,18 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
-import { alignHorizontally, alignVertically, lineOf, moveGroup, moveLine, playersInBox, spaceEvenly } from '../lib/formation-edit'
+import {
+  alignHorizontally,
+  alignVertically,
+  centerX,
+  flipFormation,
+  flipName,
+  lineOf,
+  moveGroup,
+  moveLine,
+  playersInBox,
+  spaceEvenly
+} from '../lib/formation-edit'
 import {
   DEFAULT_POSITIONS,
   inferPositionType,
@@ -1143,6 +1154,58 @@ assert.equal(roundTripFailures, 0)
   // Diagrams draw the formation's own line.
   const lined = playDiagramSvg({ routes: [], footballs: [] }, { ...starterFormation(createPlaybook('t', 'L')), lineOfScrimmage: 40 })
   assert.ok(lined.includes('y1="40"'))
+}
+
+// ---- Flipping a formation ----
+{
+  const players: PlaybookPosition[] = [
+    { code: 'lt', label: 'LT', type: 'OL' },
+    { code: 'lg', label: 'LG', type: 'OL' },
+    { code: 'c', label: 'C', type: 'OL' },
+    { code: 'rg', label: 'RG', type: 'OL' },
+    { code: 'x', label: 'X', type: 'WR' },
+    { code: 'te', label: 'Y', type: 'TE' },
+    { code: 'qb', label: 'QB', type: 'QB' },
+    { code: 'rb', label: 'RB', type: 'RB' }
+  ]
+  const spots = {
+    lt: { x: 38, y: 52 },
+    lg: { x: 44, y: 52 },
+    c: { x: 50, y: 52 },
+    rg: { x: 56, y: 52 },
+    x: { x: 8, y: 52 },
+    te: { x: 62, y: 52 },
+    qb: { x: 50, y: 70 },
+    rb: { x: 36, y: 84 }
+  }
+  const flipped = flipFormation(spots, players)
+  // Linemen keep their spots: the left guard stays left of the center.
+  ;['lt', 'lg', 'c', 'rg'].forEach((code) => assert.deepEqual(flipped[code], spots[code as keyof typeof spots]))
+  // Everyone else mirrors around the center, keeping their depth.
+  assert.deepEqual(flipped.x, { x: 92, y: 52 })
+  assert.deepEqual(flipped.te, { x: 38, y: 52 })
+  assert.deepEqual(flipped.rb, { x: 64, y: 84 })
+  assert.deepEqual(flipped.qb, { x: 50, y: 70 })
+  // Flipping twice gets back where you started.
+  assert.deepEqual(flipFormation(flipped, players), spots)
+
+  // The axis is the center wherever he lines up; the field's edge still holds.
+  const offCenter = { ...spots, c: { x: 40, y: 52 } }
+  assert.equal(centerX(offCenter, players), 40)
+  assert.equal(flipFormation(offCenter, players).x.x, 72)
+  assert.equal(flipFormation({ ...offCenter, te: { x: 90, y: 52 } }, players).te.x, 4)
+  // With no player called C, the middle of the line is the axis; with no line, the field's middle.
+  assert.equal(centerX({ a: { x: 40, y: 52 }, b: { x: 50, y: 52 } }, [{ code: 'a', label: 'LG', type: 'OL' }, { code: 'b', label: 'RG', type: 'OL' }]), 45)
+  assert.equal(centerX({ a: { x: 10, y: 52 } }, [{ code: 'a', label: 'X', type: 'WR' }]), 50)
+  // The original seven flip around their center too.
+  const sevenFlipped = flipFormation(defaultFormationPositions(), DEFAULT_POSITIONS)
+  assert.equal(sevenFlipped['1'].x, 92)
+  assert.equal(sevenFlipped.C.x, 50)
+
+  assert.equal(flipName('Trips Right'), 'Trips Left')
+  assert.equal(flipName('Bunch left over'), 'Bunch right over')
+  assert.equal(flipName('EMPTY RIGHT'), 'EMPTY LEFT')
+  assert.equal(flipName('Brighton'), 'Brighton')
 }
 
 console.log('logic tests passed')

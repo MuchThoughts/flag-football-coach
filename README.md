@@ -99,6 +99,11 @@ Horizontally** puts them in a row, **Align Vertically** in a column, and
 **Space Evenly** evens out the gaps. Drag the **LOS** tab beside the field to
 move the line of scrimmage; players standing on the line move with it.
 
+The copy button on a formation card duplicates it. **Flip** (on by default)
+mirrors the copy left to right around the center, and every OL player keeps
+their spot, so a left guard stays left. The name follows: "Trips Right" becomes
+"Trips Left". The copy is placed next to its original.
+
 The small **Set as base formation** link at the bottom of the panel makes a
 formation the playbook's base: new formations start from it and new plays
 pick it first. Switching a formation to

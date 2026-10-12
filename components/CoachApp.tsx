@@ -66,6 +66,7 @@ import PlaybookField from '@/components/PlaybookField'
 import { PlayDiagram, PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
 import { PackagesPanel } from '@/components/Packages'
 import FormationCanvas from '@/components/FormationCanvas'
+import DuplicateFormationSheet from '@/components/DuplicateFormationSheet'
 import { alignHorizontally, alignVertically, lineOf, spaceEvenly } from '@/lib/formation-edit'
 import { CallSheetsSheet } from '@/components/CallSheets'
 import PlaybookLibrary, { type PlaybookOverview } from '@/components/PlaybookLibrary'
@@ -770,7 +771,8 @@ export default function CoachApp() {
     setCallSheets((sheets) => sheets.filter((sheet) => sheet.id !== sheetId))
   }
 
-  function saveFormation(playbookId: string, draft: FormationDraft) {
+  /** Saves a formation; a new one goes after `afterId` when given, so a copy sits beside its original. */
+  function saveFormation(playbookId: string, draft: FormationDraft, afterId?: string) {
     const now = new Date().toISOString()
     setFormations((items) => {
       const existing = items.find((formation) => formation.id === draft.id)
@@ -781,7 +783,9 @@ export default function CoachApp() {
         createdAt: existing?.createdAt || now,
         updatedAt: now
       }
-      return existing ? items.map((item) => (item.id === formation.id ? formation : item)) : [...items, formation]
+      if (existing) return items.map((item) => (item.id === formation.id ? formation : item))
+      const after = afterId ? items.findIndex((item) => item.id === afterId) : -1
+      return after < 0 ? [...items, formation] : [...items.slice(0, after + 1), formation, ...items.slice(after + 1)]
     })
   }
 
@@ -1014,7 +1018,7 @@ export default function CoachApp() {
             deletePlaybook={() => deletePlaybook(openPlaybook.id)}
             savePlay={(draft) => savePlay(openPlaybook.id, draft)}
             deletePlay={deletePlay}
-            saveFormation={(draft) => saveFormation(openPlaybook.id, draft)}
+            saveFormation={(draft, afterId) => saveFormation(openPlaybook.id, draft, afterId)}
             setBaseFormation={(formationId) => setBaseFormation(openPlaybook.id, formationId)}
             deleteFormation={deleteFormation}
             addCallSheet={(name) => addCallSheet(openPlaybook.id, name)}
@@ -2042,7 +2046,7 @@ function PlaybookPage({
   deletePlaybook: () => void
   savePlay: (play: PlayDraft) => void
   deletePlay: (playId: string) => void
-  saveFormation: (formation: FormationDraft) => void
+  saveFormation: (formation: FormationDraft, afterId?: string) => void
   setBaseFormation: (formationId: string | undefined) => void
   deleteFormation: (formationId: string) => void
   addCallSheet: (name: string) => CallSheet
@@ -2053,6 +2057,7 @@ function PlaybookPage({
   const [filters, setFilters] = useState<PlayFilters>(emptyPlayFilters)
   const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
+  const [duplicatingFormation, setDuplicatingFormation] = useState<Formation | null>(null)
   const [openPlayId, setOpenPlayId] = useState<string | null>(null)
   const [actingOnPlayId, setActingOnPlayId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -2279,13 +2284,24 @@ function PlaybookPage({
                     {countPlaysByFormation(plays, formation.id) === 1 ? '' : 's'}
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEditingFormation(formation)}
-                  className="shrink-0 rounded-md border border-[#d8ded5] px-2 py-1 text-xs font-black"
-                >
-                  Edit
-                </button>
+                <div className="flex shrink-0 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setDuplicatingFormation(formation)}
+                    aria-label={`Duplicate ${formation.name}`}
+                    title="Duplicate, and flip if you like"
+                    className="flex items-center rounded-md border border-[#d8ded5] px-1.5 py-1 text-[#53665c] hover:border-[#10201a] hover:text-[#10201a]"
+                  >
+                    <Copy size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditingFormation(formation)}
+                    className="rounded-md border border-[#d8ded5] px-2 py-1 text-xs font-black hover:border-[#10201a]"
+                  >
+                    Edit
+                  </button>
+                </div>
               </div>
               <div className="mt-1.5">
                 <PlaybookField positions={formation.positions} packageId={formation.packageId} lineOfScrimmage={formation.lineOfScrimmage} compact />
@@ -2367,6 +2383,18 @@ function PlaybookPage({
           onSave={saveCallSheet}
           onDelete={deleteCallSheet}
           onClose={() => setShowCallSheets(false)}
+        />
+      )}
+
+      {duplicatingFormation && (
+        <DuplicateFormationSheet
+          formation={duplicatingFormation}
+          takenNames={formations.map((formation) => formation.name)}
+          onCreate={(copy) => {
+            saveFormation({ id: uid('formation'), ...copy }, duplicatingFormation.id)
+            setDuplicatingFormation(null)
+          }}
+          onClose={() => setDuplicatingFormation(null)}
         />
       )}
 

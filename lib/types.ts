@@ -234,11 +234,12 @@ export interface CallSheet {
 }
 
 /** What a drawn line means, which sets how it looks. */
-export type PlayLineKind = 'route' | 'run' | 'fake' | 'block' | 'motion'
+export type PlayLineKind = 'route' | 'run' | 'fake' | 'block' | 'motion' | 'handoff' | 'fakeHandoff'
 
 /**
- * A line drawn from one player. It starts wherever that player lines up (or,
- * after a motion, where the motion ends), so it moves with the formation.
+ * A line drawn from one player. It starts wherever that player lines up, or
+ * where another of their lines ends when it follows one (a route after a
+ * motion, a bootleg after a fake handoff), so it moves with the formation.
  * Points and bends are field percentages.
  */
 export interface PlayLine {
@@ -249,6 +250,8 @@ export interface PlayLine {
   points: FieldPoint[]
   /** One per segment: a control point that curves it, or null for straight. */
   bends: (FieldPoint | null)[]
+  /** The line this one carries on from, starting where it ends. */
+  fromLineId?: string
 }
 
 /** The part of the field a play is shown at: a centre in field percent, and how far in. */
@@ -275,6 +278,11 @@ export interface PlaybookPlay {
   lines?: PlayLine[]
   /** How far in and where the play is shown, here and when exported. */
   view?: PlayView
+  /**
+   * 2 once the lines say what they follow. Before that, every line a player
+   * had after a motion started where the motion ended.
+   */
+  lineVersion?: number
   createdAt: string
   updatedAt: string
 }

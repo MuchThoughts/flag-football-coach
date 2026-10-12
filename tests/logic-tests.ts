@@ -16,9 +16,19 @@ import { playDiagramSvg, playFileName } from '../lib/play-svg'
 import {
   bendThrough,
   DEFAULT_VIEW,
+  endTrim,
+  followers,
+  handoffSpot,
   insertPivot,
+  LINE_STYLES,
+  LINE_VERSION,
+  lineEnd,
   lineStart,
   MAX_ZOOM,
+  moveLinePoint,
+  playLines,
+  removeLine,
+  RUN_BLUE,
   MIN_ZOOM,
   newLine,
   normalizeLine,
@@ -1235,12 +1245,71 @@ assert.equal(roundTripFailures, 0)
   assert.deepEqual(newLine('m', 'motion', 'x', spots.x).points, [{ x: 22, y: 52 }])
   assert.deepEqual(newLine('m2', 'motion', 'rb', { x: 80, y: 84 }).points, [{ x: 68, y: 84 }])
 
-  // Lines start at their player; after a motion, everything else starts where the motion ends.
+  // Lines start at their player, or where the line they follow ends.
   const motion = newLine('m', 'motion', 'x', spots.x)
+  const follow = newLine('a', 'route', 'x', { x: 22, y: 52 }, { from: motion })
+  assert.equal(follow.fromLineId, 'm')
+  assert.deepEqual(follow.points, [{ x: 22, y: 34 }])
   assert.deepEqual(lineStart(route, spots, [route]), spots.x)
-  assert.deepEqual(lineStart(route, spots, [route, motion]), { x: 22, y: 52 })
+  assert.deepEqual(lineStart(route, spots, [route, motion]), spots.x)
+  assert.deepEqual(lineStart(follow, spots, [follow, motion]), { x: 22, y: 52 })
   assert.deepEqual(lineStart(motion, spots, [route, motion]), spots.x)
   assert.equal(lineStart({ ...route, playerCode: 'gone' }, spots, [route]), undefined)
+  // A line whose leader is gone starts back at the player.
+  assert.deepEqual(lineStart(follow, spots, [follow]), spots.x)
+
+  // A motion can lead to another motion, and on from there.
+  const second = newLine('m2', 'motion', 'x', { x: 22, y: 52 }, { from: motion })
+  const third = newLine('r3', 'block', 'x', second.points[0], { from: second })
+  const chain = [motion, second, third, route]
+  assert.deepEqual(lineStart(third, spots, chain), second.points[0])
+  assert.deepEqual(followers(chain, 'm').map((item) => item.id), ['m2', 'r3'])
+  assert.deepEqual(followers(chain, 'r'), [])
+
+  // Moving where a line ends takes everything after it along; a pivot moves alone.
+  const moved = moveLinePoint(chain, 'm', 0, { x: 30, y: 50 })
+  assert.deepEqual(moved[0].points, [{ x: 30, y: 50 }])
+  assert.deepEqual(moved[1].points, [{ x: second.points[0].x + 8, y: 50 }])
+  assert.deepEqual(moved[2].points, [{ x: third.points[0].x + 8, y: third.points[0].y - 2 }])
+  assert.deepEqual(moved[3], route)
+
+  // Taking out a line hands its followers to whatever it followed.
+  const removed = removeLine(chain, 'm2')
+  assert.deepEqual(removed.map((item) => item.id), ['m', 'r3', 'r'])
+  assert.equal(removed[1].fromLineId, 'm')
+  assert.equal(removeLine(chain, 'm')[0].fromLineId, undefined)
+
+  // Old plays started every line after a motion where it ended; they still read that way.
+  assert.equal(playLines({ lines: [route, motion] })[0].fromLineId, 'm')
+  assert.equal(playLines({ lines: [route, motion], lineVersion: LINE_VERSION })[0].fromLineId, undefined)
+
+  // Handoffs end in a big X just short of the player taking it, and can be followed.
+  assert.equal(LINE_STYLES.handoff.end, 'x')
+  assert.equal(LINE_STYLES.fakeHandoff.end, 'x')
+  assert.ok(LINE_STYLES.handoff.follow && LINE_STYLES.fakeHandoff.follow && LINE_STYLES.motion.follow)
+  assert.ok(!LINE_STYLES.route.follow)
+  assert.equal(LINE_STYLES.run.color, RUN_BLUE)
+  assert.equal(LINE_STYLES.handoff.color, RUN_BLUE)
+  assert.equal(LINE_STYLES.fakeHandoff.color, '#c2412d')
+  const spot = handoffSpot({ x: 50, y: 70 }, { x: 50, y: 84 })
+  assert.deepEqual(spot, { x: 50, y: 78 })
+  assert.deepEqual(handoffSpot({ x: 50, y: 70 }, { x: 52, y: 74 }), { x: 51, y: 72 })
+  const handoff = newLine('h', 'handoff', 'qb', spots.qb, { end: spot })
+  assert.deepEqual(handoff.points, [spot])
+  const cross = lineEnd(handoff, spots.qb, 1)
+  assert.equal((cross.match(/<path /g) || []).length, 1)
+  assert.ok(cross.includes(`stroke="${RUN_BLUE}"`))
+  assert.equal((lineEnd(handoff, spots.qb, 1, { halo: true }).match(/<path /g) || []).length, 2)
+
+  // Arrowed lines stop short so the head covers the end cleanly; the head's tip is the end.
+  const trim = endTrim(route, 1)
+  assert.ok(trim > 1 && trim < 4)
+  assert.equal(endTrim(handoff, 1), 0)
+  assert.ok(pathData(route, spots.x, trim).endsWith(`L20,${Math.round((34 + trim) * 100) / 100}`))
+  assert.ok(lineEnd(route, spots.x, 1).startsWith('<polygon points="20,34 '))
+  // A curved end is cut along the curve and keeps curving.
+  const curvedEnd = pathData({ ...route, bends: [{ x: 20, y: 40 }] }, spots.x, trim)
+  assert.ok(curvedEnd.includes('Q') && !curvedEnd.endsWith('20,34'))
 
   // A pivot splits a segment in two straight halves; removing it joins them again.
   const bent = { ...route, bends: [{ x: 4, y: 40 }] }
@@ -1289,16 +1358,24 @@ assert.equal(roundTripFailures, 0)
       newLine('2', 'run', 'RB', { x: 30, y: 84 }),
       newLine('3', 'fake', 'QB', { x: 50, y: 72 }),
       newLine('4', 'block', 'C', { x: 50, y: 52 }),
-      newLine('5', 'motion', '4', { x: 92, y: 52 })
-    ]
+      newLine('5', 'motion', '4', { x: 92, y: 52 }),
+      newLine('6', 'handoff', 'QB', { x: 50, y: 72 }, { end: { x: 45, y: 80 } }),
+      newLine('7', 'fakeHandoff', 'QB', { x: 50, y: 72 }, { end: { x: 55, y: 80 } })
+    ],
+    lineVersion: LINE_VERSION
   }
   const svg = playDiagramSvg(drawnPlay, formation)
   assert.ok(svg.includes('viewBox="-100 -60 400 200"'))
-  assert.ok(svg.includes('stroke="#0b4424"'))
+  assert.ok(svg.includes(`stroke="${RUN_BLUE}"`))
   assert.ok(svg.includes('stroke="#c2412d"'))
   assert.ok(svg.includes('stroke-dasharray'))
   assert.equal((svg.match(/<circle /g) || []).length, 8)
   assert.equal((svg.match(/<polygon /g) || []).length, 3)
+  // The two Xs, each a single path, on top of the seven lines.
+  assert.equal((svg.match(/<path /g) || []).length, 9)
+  // On turf, the run, the handoff and its X get a pale edge.
+  const turf = playDiagramSvg(drawnPlay, formation, undefined, 'turf')
+  assert.equal((turf.match(/<path /g) || []).length, 12)
 }
 
 console.log('logic tests passed')

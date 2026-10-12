@@ -99,37 +99,57 @@ Horizontally** puts them in a row, **Align Vertically** in a column, and
 **Space Evenly** evens out the gaps. Drag the **LOS** tab beside the field to
 move the line of scrimmage; players standing on the line move with it.
 
-Click a formation card to edit it. **Duplicate**, at the top of the edit page,
+Click a formation card to edit it. Its plays are listed under the field, with
+**New Play** at the top of that list to start one from this formation; a play
+opens in the play editor and comes back here when you're done. **Duplicate**, at the top of the edit page,
 saves the formation as it stands and makes a copy. **Flip** (on by default)
 mirrors the copy left to right around the center, and every OL player keeps
 their spot, so a left guard stays left. The name follows: "Trips Right" becomes
 "Trips Left". The copy is placed next to its original.
 
-The small **Set as base formation** link at the bottom of the panel makes a
+The small star (**Set as base**) in the top bar makes a
 formation the playbook's base: new formations start from it and new plays
 pick it first. Switching a formation to
 another package keeps everyone's spot and only changes the labels.
 
-## Drawing plays
+## Plays
 
-**New Play**, or a play's **Edit Play**, opens the play editor: the field with
-the formation's players fixed in place, and the play's name, formation, pass or
-run, area and notes beside it.
+The **Plays** tab lists every formation with its plays under it, runs first
+(blue edge) then passes (gold edge). Search and the type, area and formation
+filters narrow it down. Click a formation's name to open the formation, its
+**+** to start a play from it, or a play to open it in the play editor.
 
+## Drawing and naming plays
+
+**New Play**, or clicking a play, opens the play editor: the field with the
+formation's players fixed in place, and beside it the play's name, formation,
+pass or run, area, call and notes.
+
+- **The call:** stack up components (Backfield, Quarterback, Receiver runs,
+  Motion, Pass concepts, Single routes), with Fake, Left or Right and who
+  carries it, the way you'd call it: "Fake HB Stretch Right QB Bootleg". The
+  name follows the call, with the formation first, until you type your own
+  (**Use the call** switches back), and the call sets pass or run and the area.
 - **Moving around:** drag the grass to pan; scroll, pinch or use − / + to zoom
   (⛶ fits the whole field). The view you save with is how the play shows
-  everywhere, in thumbnails, Save as Image and printing, so zoom out for deep
+  everywhere, in thumbnails, the image and printing, so zoom out for deep
   passes and in for runs.
-- **Adding lines:** tap a player for **Block** (a short line with a bar
-  across its end), **Motion** (a dotted line to a dashed copy of the player,
-  which you drag to where they go; their other lines then start there),
-  **Route** (solid), **Run** (bold dark green) or **Fake** (bold red).
+- **Adding lines:** tap a player for **Block** (a short line with a bar across
+  its end), **Motion** (a dotted line to a dashed copy of the player, which you
+  drag to where they go), **Route** (solid), **Run** (bold blue), **Fake**
+  (bold red), **Handoff** (ending in a big blue X) or **Fake Handoff** (a big
+  red X). A handoff heads for the nearest running back.
+- **What comes next:** select a motion, handoff or fake handoff (tap its end,
+  or the dashed player) and the **Then** buttons add the player's next
+  assignment from where it ends: a route after a motion, a bootleg after a
+  fake handoff, even another motion. Moving the end takes what follows along.
 - **Editing a line:** tap it to select it (it glows yellow and shows its
   handles). Drag the end, or any pivot, to reshape it. Double-click or hold on
   the line to add a pivot, and double-click a pivot to remove it. Drag the
   yellow dot in the middle of a segment to curve it. Tap the grass to let go;
-  Delete removes the selected line, and the menu under the field can switch it
-  between Route, Run, Fake and Block.
+  Delete removes the selected line (anything after it then starts from where
+  it started), and the menu under the field can change its type.
+- **Image** at the top saves the play as a picture, at the view on screen.
 
 ## Call sheets
 
@@ -149,7 +169,7 @@ newer version has been deployed, a yellow bar offers **Reload**.
 - **Print or PDF:** open a playbook and tap **Export**. It prints every play
   in it, six to a page or one per page, with or without notes. Choose
   **Save as PDF** in the print dialog to keep a file.
-- **One play as an image:** open a play and tap **Save as Image**. On a phone
+- **One play as an image:** open a play and tap **Image**. On a phone
   the share sheet opens (Save Image, Messages, AirDrop); elsewhere a PNG
   downloads.
 

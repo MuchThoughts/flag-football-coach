@@ -41,7 +41,6 @@ import {
 import { getGameSummary } from '@/lib/game-summary'
 import { migrateAppState } from '@/lib/migrate-state'
 import {
-  countPlaysByFormation,
   layoutPositions,
   placeAll,
   emptyPlayFilters,
@@ -50,20 +49,9 @@ import {
   PLAY_TYPES,
   type PlayFilters
 } from '@/lib/playbook'
-import {
-  classifySteps,
-  COMPONENT_GROUPS,
-  componentsInGroup,
-  findComponent,
-  playCallFromSteps,
-  stepIsComplete,
-  stepLabel,
-  stepsFromPlay,
-  type ComponentGroup
-} from '@/lib/play-builder'
 import { LINEUPS_PER_UNIT } from '@/lib/types'
-import PlaybookField from '@/components/PlaybookField'
-import { PlayDiagram, PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
+import { RUN_BLUE } from '@/lib/play-lines'
+import { PlayDiagram, PrintPlaybookSheet } from '@/components/PlaybookExport'
 import { PackagesPanel } from '@/components/Packages'
 import FormationCanvas from '@/components/FormationCanvas'
 import PlayEditorPage from '@/components/PlayEditor'
@@ -107,7 +95,6 @@ import type {
   PlayFootball,
   Player,
   PlayRoute,
-  PlayStep,
   PlayType,
   ResolvedDrive,
   SlotPositions,
@@ -1397,614 +1384,103 @@ function FilterSelect<T extends string>({
   )
 }
 
-/** A play in a list. Tapping opens it; holding brings up edit and delete. */
-function PlayRow({
-  play,
-  subtitle,
-  meta,
-  preview,
-  onOpen,
-  onHold
-}: {
-  play: PlaybookPlay
-  subtitle?: string
-  meta: string
-  /** A small diagram, shown where there is room for it. */
-  preview?: React.ReactNode
-  onOpen: () => void
-  onHold: () => void
-}) {
-  const [holding, setHolding] = useState(false)
-  const holdTimerRef = useRef<number | null>(null)
-  const holdFiredRef = useRef(false)
-  const startRef = useRef({ x: 0, y: 0 })
+const PASS_GOLD = '#f7c948'
 
-  function cancelHold() {
-    if (holdTimerRef.current) {
-      window.clearTimeout(holdTimerRef.current)
-      holdTimerRef.current = null
-    }
-    setHolding(false)
-  }
-
-  useEffect(() => cancelHold, [])
-
+/** A play in a list, marked run or pass down its edge. Tapping opens it in the editor. */
+function PlayListRow({ play, onOpen }: { play: PlaybookPlay; onOpen: () => void }) {
+  const run = play.type === 'run'
   return (
     <button
       type="button"
-      onContextMenu={(event) => event.preventDefault()}
-      onPointerDown={(event) => {
-        if (event.pointerType === 'mouse' && event.button !== 0) return
-        startRef.current = { x: event.clientX, y: event.clientY }
-        holdFiredRef.current = false
-        setHolding(true)
-        holdTimerRef.current = window.setTimeout(() => {
-          holdFiredRef.current = true
-          holdTimerRef.current = null
-          setHolding(false)
-          navigator.vibrate?.(20)
-          onHold()
-        }, playHoldDuration)
-      }}
-      onPointerMove={(event) => {
-        // A finger drifts while it is held; scrolling away should call it off.
-        const drift = Math.hypot(event.clientX - startRef.current.x, event.clientY - startRef.current.y)
-        if (holdTimerRef.current && drift > 12) {
-          cancelHold()
-        }
-      }}
-      onPointerUp={cancelHold}
-      onPointerCancel={cancelHold}
-      onClick={() => {
-        if (holdFiredRef.current) return
-        onOpen()
-      }}
-      className="relative flex w-full select-none flex-col overflow-hidden rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-left"
+      onClick={onOpen}
+      title={play.notes || play.name}
+      className="flex w-full min-w-0 items-center gap-2 border-l-4 bg-white px-2 py-1 text-left hover:bg-[#f7f5ee]"
+      style={{ borderLeftColor: run ? RUN_BLUE : PASS_GOLD }}
     >
-      <div
-        aria-hidden
-        style={{ width: holding ? '100%' : '0%', transition: holding ? `width ${playHoldDuration}ms linear` : 'none' }}
-        className="absolute inset-y-0 left-0 bg-[#f7c948]/50"
-      />
-      <div className="relative w-full">
-        <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-sm font-black">{play.name}</span>
-          <span className="shrink-0 rounded-full bg-[#f7f5ee] px-1.5 py-0.5 text-[10px] font-black uppercase text-[#53665c]">
-            {play.type}
-          </span>
-        </div>
-        <p className="truncate text-xs font-bold text-[#53665c]">
-          <span className="font-black uppercase">{meta}</span>
-          {subtitle && <span> · {subtitle}</span>}
-        </p>
-        {preview && <div className="pointer-events-none mt-1 hidden lg:block">{preview}</div>}
-      </div>
+      <span
+        className="w-9 shrink-0 rounded px-1 py-px text-center text-[10px] font-black uppercase"
+        style={run ? { background: RUN_BLUE, color: '#fff' } : { background: PASS_GOLD, color: '#10201a' }}
+      >
+        {play.type}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm font-black">{play.name}</span>
+      <span className="shrink-0 text-[11px] font-bold capitalize text-[#53665c]">{play.area}</span>
     </button>
   )
 }
 
-/** Edit or delete, after holding a play down. */
-function PlayActionsSheet({
-  play,
-  onEdit,
-  onDelete,
-  onClose
-}: {
-  play: PlaybookPlay
-  onEdit: () => void
-  onDelete: () => void
-  onClose: () => void
-}) {
-  const [confirming, setConfirming] = useState(false)
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
-        <h3 className="truncate font-display text-xl font-black">{play.name}</h3>
-        <p className="mt-1 text-sm font-bold text-[#53665c]">
-          {confirming ? 'Deleting a play cannot be undone.' : 'Edit the call or delete the play.'}
-        </p>
-
-        {confirming ? (
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setConfirming(false)}
-              className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onDelete}
-              className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white"
-            >
-              <Trash2 size={16} />
-              Delete
-            </button>
-          </div>
-        ) : (
-          <div className="mt-4 space-y-2">
-            <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white">
-              Edit
-            </button>
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#c2412d] px-3 py-2 font-black text-[#c2412d]"
-            >
-              <Trash2 size={16} />
-              Delete
-            </button>
-            <button type="button" onClick={onClose} className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
-              Cancel
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+/** Runs first, then passes, each in the order they were made. */
+function byType(plays: PlaybookPlay[]) {
+  return [...plays.filter((play) => play.type === 'run'), ...plays.filter((play) => play.type !== 'run')]
 }
 
-function PlayBuilderPage({
+/** A formation and the plays run from it. The header opens the formation; a play opens the editor. */
+function FormationPlaysGroup({
+  formation,
   plays,
-  formations,
-  savePlay,
-  deletePlay
+  isBase,
+  packageName,
+  onOpenFormation,
+  onOpenPlay,
+  onNewPlay
 }: {
+  formation?: Formation
   plays: PlaybookPlay[]
-  formations: Formation[]
-  savePlay: (play: PlayDraft) => void
-  deletePlay: (playId: string) => void
+  isBase: boolean
+  packageName?: string
+  onOpenFormation?: () => void
+  onOpenPlay: (play: PlaybookPlay) => void
+  onNewPlay?: () => void
 }) {
-  const [playId, setPlayId] = useState<string | null>(null)
-  const [formationId, setFormationId] = useState<string | null>(null)
-  const [steps, setSteps] = useState<PlayStep[]>([])
-  const [name, setName] = useState('')
-  const [nameEdited, setNameEdited] = useState(false)
-  const [notes, setNotes] = useState('')
-  const [group, setGroup] = useState<ComponentGroup>('backfield')
-  const [actingOnPlay, setActingOnPlay] = useState<PlaybookPlay | null>(null)
-
-  const formation = formations.find((item) => item.id === formationId)
-  // Anyone in the formation's package but the quarterback can get the ball or run a route.
-  const receivers = usePositions(formation?.packageId)
-    .filter((position) => position.type !== 'QB')
-    .map((position) => position.label.trim())
-    .filter(Boolean)
-  const call = playCallFromSteps(steps, formation?.name)
-  const { type, area } = classifySteps(steps)
-  // Anything the builder can say, whether it was written here or drawn earlier.
-  const builtPlays = plays.filter((play) => stepsFromPlay(play, formations))
-  const incomplete = steps.some((step) => !stepIsComplete(step))
-  const displayName = nameEdited ? name : call
-
-  function reset() {
-    setPlayId(null)
-    setFormationId(null)
-    setSteps([])
-    setName('')
-    setNameEdited(false)
-    setNotes('')
-    setGroup('backfield')
-  }
-
-  function addStep(componentId: string, receiver?: string) {
-    setSteps((current) => [...current, { id: uid('step'), componentId, receivers: receiver ? [receiver] : undefined }])
-  }
-
-  /** Tapping a number adds them to the call; tapping again takes them back out. */
-  function toggleReceiver(step: PlayStep, code: string) {
-    const current = step.receivers || []
-    const receivers = current.includes(code) ? current.filter((item) => item !== code) : [...current, code]
-    updateStep(step.id, { receivers })
-  }
-
-  function updateStep(stepId: string, patch: Partial<PlayStep>) {
-    setSteps((current) => current.map((step) => (step.id === stepId ? { ...step, ...patch } : step)))
-  }
-
-  function removeStep(stepId: string) {
-    setSteps((current) => current.filter((step) => step.id !== stepId))
-  }
-
-  function openPlay(play: PlaybookPlay) {
-    const opened = stepsFromPlay(play, formations) || []
-    setPlayId(play.id)
-    setFormationId(play.formationId)
-    setSteps(opened)
-    setName(play.name)
-    setNameEdited(play.name !== playCallFromSteps(opened, formations.find((item) => item.id === play.formationId)?.name))
-    setNotes(play.notes)
-    setGroup('backfield')
-    window.scrollTo({ top: 0 })
-  }
-
-  function save() {
-    if (!formationId || steps.length === 0) return
-    savePlay({
-      id: playId || uid('play'),
-      name: (displayName || 'Untitled play').trim(),
-      formationId,
-      type,
-      area,
-      notes,
-      routes: [],
-      footballs: [],
-      steps
-    })
-    reset()
-  }
-
-  // --- Step one: which formation are we in?
-  if (!formation) {
-    return (
-      <div className="space-y-3 py-3">
-        <div>
-          <h2 className="font-display text-xl font-black">Play Builder</h2>
-          <p className="text-sm font-bold text-[#53665c]">Start with a formation, then stack up the call.</p>
-        </div>
-
-        {formations.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
-            Build a formation in the playbook first.
-          </p>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {formations.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setFormationId(item.id)}
-                className="w-full rounded-lg border border-[#d8ded5] bg-white p-3 text-left"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-black">{item.name}</span>
-                  <span className="text-xs font-black uppercase text-[#53665c]">
-                    {countPlaysByFormation(plays, item.id)} play{countPlaysByFormation(plays, item.id) === 1 ? '' : 's'}
-                  </span>
-                </div>
-                <div className="mt-2">
-                  <PlaybookField positions={item.positions} packageId={item.packageId} lineOfScrimmage={item.lineOfScrimmage} compact />
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {builtPlays.length > 0 && (
-          <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} onHold={setActingOnPlay} />
-        )}
-        {actingOnPlay && (
-          <PlayActionsSheet
-            play={actingOnPlay}
-            onEdit={() => {
-              openPlay(actingOnPlay)
-              setActingOnPlay(null)
-            }}
-            onDelete={() => {
-              deletePlay(actingOnPlay.id)
-              setActingOnPlay(null)
-            }}
-            onClose={() => setActingOnPlay(null)}
-          />
-        )}
-      </div>
-    )
-  }
-
-  // --- Step two: stack up the components.
+  const runs = plays.filter((play) => play.type === 'run').length
   return (
-    <div className="space-y-3 py-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="font-display text-xl font-black">{formation.name}</h2>
-          <p className="text-sm font-bold text-[#53665c]">{playId ? 'Editing a saved play' : 'New play'}</p>
-        </div>
+    <section className="overflow-hidden rounded-lg border border-[#d8ded5] bg-white">
+      <div className="flex items-center gap-1 border-b border-[#d8ded5] bg-[#f7f5ee] pr-1">
         <button
           type="button"
-          onClick={reset}
-          className="shrink-0 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black"
+          onClick={onOpenFormation}
+          disabled={!onOpenFormation}
+          title={formation ? `Open ${formation.name}` : undefined}
+          className="flex min-w-0 flex-1 items-center gap-2 px-1.5 py-1 text-left hover:bg-[#efece0] disabled:hover:bg-transparent"
         >
-          Change
-        </button>
-      </div>
-
-      <PlaybookField positions={formation.positions} packageId={formation.packageId} lineOfScrimmage={formation.lineOfScrimmage} compact />
-
-      <section className="rounded-lg border border-[#d8ded5] bg-white p-3">
-        <p className="text-xs font-black uppercase tracking-wide text-[#53665c]">The call</p>
-        <p className="mt-1 font-display text-lg font-black leading-tight">
-          {call || <span className="text-[#9aa79f]">Pick your first component below</span>}
-        </p>
-
-        {steps.length > 0 && (
-          <ul className="mt-3 space-y-2">
-            {steps.map((step, index) => {
-              const component = findComponent(step.componentId)
-              if (!component) return null
-              return (
-                <li key={step.id} className="rounded-lg bg-[#f7f5ee] px-2 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#10201a] text-xs font-black text-white">
-                      {index + 1}
-                    </span>
-                    <span className="flex-1 truncate text-sm font-black">
-                      {stepLabel(step) || component.label}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeStep(step.id)}
-                      aria-label={`Remove ${component.label}`}
-                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#53665c]"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-8">
-                    <StepToggle
-                      active={Boolean(step.fake)}
-                      label="Fake"
-                      onClick={() => updateStep(step.id, { fake: !step.fake })}
-                    />
-                    {component.hasDirection && (
-                      <>
-                        <StepToggle
-                          active={step.direction === 'left'}
-                          label="Left"
-                          onClick={() =>
-                            updateStep(step.id, { direction: step.direction === 'left' ? undefined : 'left' })
-                          }
-                        />
-                        <StepToggle
-                          active={step.direction === 'right'}
-                          label="Right"
-                          onClick={() =>
-                            updateStep(step.id, { direction: step.direction === 'right' ? undefined : 'right' })
-                          }
-                        />
-                      </>
-                    )}
-                    {component.needsReceiver && (
-                      <>
-                        <span className="pl-1 text-xs font-black uppercase text-[#53665c]">Who</span>
-                        {receivers.map((code) => (
-                          <StepToggle
-                            key={code}
-                            active={(step.receivers || []).includes(code)}
-                            label={code}
-                            onClick={() => toggleReceiver(step, code)}
-                          />
-                        ))}
-                      </>
-                    )}
-                  </div>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </section>
-
-      <section className="space-y-2">
-        <div className="-mx-4 overflow-x-auto px-4">
-          <div className="flex w-max gap-2">
-            {COMPONENT_GROUPS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setGroup(item.id)}
-                className={`shrink-0 rounded-full px-3 py-2 text-xs font-black uppercase ${
-                  group === item.id ? 'bg-[#10201a] text-white' : 'bg-[#f7f5ee] text-[#53665c]'
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            {componentsInGroup(group)
-              .filter((component) => !component.needsReceiver)
-              .map((component) => (
-                <button
-                  key={component.id}
-                  type="button"
-                  onClick={() => addStep(component.id)}
-                  className="rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black"
-                >
-                  {component.label}
-                </button>
-              ))}
-          </div>
-
-          {componentsInGroup(group)
-            .filter((component) => component.needsReceiver)
-            .map((component) => (
-              <div
-                key={component.id}
-                className="flex items-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-2"
-              >
-                <span className="flex-1 truncate text-sm font-black">{component.label}</span>
-                {receivers.map((code) => (
-                  <button
-                    key={code}
-                    type="button"
-                    onClick={() => addStep(component.id, code)}
-                    aria-label={`${code} ${component.label}`}
-                    className="h-9 w-9 rounded-full bg-[#f7f5ee] text-sm font-black text-[#10201a]"
-                  >
-                    {code}
-                  </button>
-                ))}
-              </div>
-            ))}
-        </div>
-      </section>
-
-      <section className="space-y-2 rounded-lg border border-[#d8ded5] bg-white p-3">
-        <label className="block">
-          <span className="text-xs font-black uppercase tracking-wide text-[#53665c]">Save it as</span>
-          <input
-            value={displayName}
-            onChange={(event) => {
-              setName(event.target.value)
-              setNameEdited(true)
-            }}
-            placeholder="Play name"
-            aria-label="Play name"
-            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-2 font-black outline-none focus:border-[#1f7a4d]"
-          />
-        </label>
-        {nameEdited && call && (
-          <button
-            type="button"
-            onClick={() => {
-              setNameEdited(false)
-              setName('')
-            }}
-            className="text-xs font-black uppercase text-[#1f7a4d]"
-          >
-            Use the call
-          </button>
-        )}
-
-        <label className="block">
-          <span className="text-xs font-black uppercase tracking-wide text-[#53665c]">Notes</span>
-          <input
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            placeholder="When to call it"
-            aria-label="Play notes"
-            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
-          />
-        </label>
-
-        <p className="text-xs font-black uppercase text-[#53665c]">
-          Files as {type} · {area}
-          {incomplete && <span className="text-[#b4402f]"> · a step still needs a receiver</span>}
-        </p>
-
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={save}
-            disabled={steps.length === 0 || incomplete}
-            className="flex-1 rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40"
-          >
-            {playId ? 'Save changes' : 'Save play'}
-          </button>
-          {playId && (
-            <button
-              type="button"
-              onClick={() => {
-                deletePlay(playId)
-                reset()
-              }}
-              className="rounded-lg border border-[#b4402f] px-3 py-2 font-black text-[#b4402f]"
-            >
-              Delete
-            </button>
+          {formation && (
+            <span className="w-14 shrink-0">
+              <PlayDiagram play={{ routes: [], footballs: [] }} formation={formation} theme="turf" labels={false} />
+            </span>
           )}
+          <span className="min-w-0">
+            <span className="flex items-center gap-1 truncate text-sm font-black">
+              {formation?.name || 'No formation'}
+              {isBase && <Star size={11} className="shrink-0 fill-[#f7c948] text-[#b98a00]" aria-label="Base formation" />}
+            </span>
+            <span className="block truncate text-[11px] font-bold text-[#53665c]">
+              {plays.length} play{plays.length === 1 ? '' : 's'}
+              {plays.length > 0 && ` · ${runs} run${runs === 1 ? '' : 's'} · ${plays.length - runs} pass${plays.length - runs === 1 ? '' : 'es'}`}
+              {packageName && ` · ${packageName}`}
+            </span>
+          </span>
+        </button>
+        {onNewPlay && (
+          <button
+            type="button"
+            onClick={onNewPlay}
+            aria-label={`New play in ${formation?.name || 'formation'}`}
+            title="New play in this formation"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#1f7a4d] hover:bg-white"
+          >
+            <Plus size={16} />
+          </button>
+        )}
+      </div>
+      {plays.length === 0 ? (
+        <p className="px-2 py-1 text-xs font-bold text-[#9aa79f]">No plays yet.</p>
+      ) : (
+        <div className="divide-y divide-[#eef0ea]">
+          {byType(plays).map((play) => (
+            <PlayListRow key={play.id} play={play} onOpen={() => onOpenPlay(play)} />
+          ))}
         </div>
-      </section>
-
-      {builtPlays.length > 0 && (
-        <BuiltPlayList plays={builtPlays} formations={formations} onOpen={openPlay} onHold={setActingOnPlay} />
       )}
-
-      {actingOnPlay && (
-        <PlayActionsSheet
-          play={actingOnPlay}
-          onEdit={() => {
-            openPlay(actingOnPlay)
-            setActingOnPlay(null)
-          }}
-          onDelete={() => {
-            deletePlay(actingOnPlay.id)
-            if (actingOnPlay.id === playId) {
-              reset()
-            }
-            setActingOnPlay(null)
-          }}
-          onClose={() => setActingOnPlay(null)}
-        />
-      )}
-    </div>
-  )
-}
-
-function StepToggle({ active, label, onClick }: { active: boolean; label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={`rounded-full px-2.5 py-1 text-xs font-black ${
-        active ? 'bg-[#1f7a4d] text-white' : 'bg-white text-[#53665c] ring-1 ring-[#d8ded5]'
-      }`}
-    >
-      {label}
-    </button>
-  )
-}
-
-/** Every play written in the builder, so a call can be picked back up and edited. */
-function BuiltPlayList({
-  plays,
-  formations,
-  onOpen,
-  onHold
-}: {
-  plays: PlaybookPlay[]
-  formations: Formation[]
-  onOpen: (play: PlaybookPlay) => void
-  onHold: (play: PlaybookPlay) => void
-}) {
-  const [search, setSearch] = useState('')
-  const term = search.trim().toLowerCase()
-  const visible = plays.filter((play) => {
-    if (!term) return true
-    const formationName = formations.find((item) => item.id === play.formationId)?.name
-    const call = playCallFromSteps(stepsFromPlay(play, formations) || [], formationName)
-    return `${play.name} ${call}`.toLowerCase().includes(term)
-  })
-
-  return (
-    <section className="space-y-2">
-      <h3 className="font-display text-lg font-black">
-        Every play <span className="text-sm font-black text-[#53665c]">({plays.length})</span>
-      </h3>
-      <input
-        value={search}
-        onChange={(event) => setSearch(event.target.value)}
-        placeholder="Search plays"
-        aria-label="Search every play"
-        className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
-      />
-      {visible.length === 0 && (
-        <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
-          No plays match that.
-        </p>
-      )}
-      {visible.map((play) => {
-        const formationName = formations.find((item) => item.id === play.formationId)?.name
-        const call = playCallFromSteps(stepsFromPlay(play, formations) || [], formationName)
-        return (
-          <PlayRow
-            key={play.id}
-            play={play}
-            // The call is only worth repeating when the play goes by another name.
-            subtitle={call === play.name ? undefined : call}
-            meta={`${formationName || 'No formation'} · ${play.area}`}
-            onOpen={() => onOpen(play)}
-            onHold={() => onHold(play)}
-          />
-        )
-      })}
     </section>
   )
 }
@@ -2054,83 +1530,96 @@ function PlaybookPage({
   saveCallSheet: (sheet: CallSheet) => void
   deleteCallSheet: (sheetId: string) => void
 }) {
-  const [tab, setTab] = useState<'plays' | 'builder' | 'formations' | 'packages'>('plays')
+  const [tab, setTab] = useState<'plays' | 'formations' | 'packages'>('plays')
   const [filters, setFilters] = useState<PlayFilters>(emptyPlayFilters)
   const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
+  /** Where a new play starts: the formation it was made from, or the base formation. */
+  const [newPlayFormationId, setNewPlayFormationId] = useState<string | undefined>()
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
-  const [openPlayId, setOpenPlayId] = useState<string | null>(null)
-  const [actingOnPlayId, setActingOnPlayId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
   const [showCallSheets, setShowCallSheets] = useState(false)
   const [editingDetails, setEditingDetails] = useState(false)
 
   const visiblePlays = filterPlays(plays, formations, filters)
-  const openPlay = plays.find((play) => play.id === openPlayId)
-  const actingOnPlay = plays.find((play) => play.id === actingOnPlayId)
-  const formationFor = (play: PlaybookPlay) => formations.find((item) => item.id === play.formationId)
   const baseFormation = formations.find((item) => item.id === playbook.baseFormationId)
+  const packageName = (formation: Formation) =>
+    (playbook.packages.find((item) => item.id === formation.packageId) || playbook.packages[0])?.name
 
-  if (editingPlay) {
-    return (
-      <PackagesContext.Provider value={playbook.packages}>
-        <PlayEditorPage
-          key={editingPlay === 'new' ? 'new' : editingPlay.id}
-          play={editingPlay === 'new' ? undefined : editingPlay}
-          formations={formations}
-          defaultFormationId={baseFormation?.id}
-          onSave={(play) => {
-            savePlay(play)
-            setEditingPlay(null)
-          }}
-          onDelete={
-            editingPlay === 'new'
-              ? undefined
-              : () => {
-                  deletePlay(editingPlay.id)
-                  setEditingPlay(null)
-                  setOpenPlayId(null)
-                }
-          }
-          onClose={() => setEditingPlay(null)}
-        />
-      </PackagesContext.Provider>
-    )
+  function newPlay(formationId?: string) {
+    setNewPlayFormationId(formationId)
+    setEditingPlay('new')
   }
 
-  if (editingFormation) {
+  // Every formation shows when nothing narrows the list; otherwise just the ones with plays that match.
+  const narrowed = filters.type !== 'all' || filters.area !== 'all' || filters.search.trim() !== ''
+  const groups = formations
+    .filter((formation) => filters.formationId === 'all' || filters.formationId === formation.id)
+    .map((formation) => ({ formation, plays: visiblePlays.filter((play) => play.formationId === formation.id) }))
+    .filter((group) => !narrowed || group.plays.length > 0)
+  const strays = visiblePlays.filter((play) => !formations.some((formation) => formation.id === play.formationId))
+
+  if (editingPlay || editingFormation) {
     return (
       <PackagesContext.Provider value={playbook.packages}>
-        <FormationEditorPage
-          key={editingFormation === 'new' ? 'new' : editingFormation.id}
-          formation={editingFormation === 'new' ? undefined : editingFormation}
-          baseFormation={baseFormation}
-          playbookName={playbook.name}
-          playCount={editingFormation === 'new' ? 0 : countPlaysByFormation(plays, editingFormation.id)}
-          onSave={(formation, makeBase) => {
-            saveFormation(formation)
-            if (makeBase) setBaseFormation(formation.id)
-            else if (baseFormation?.id === formation.id) setBaseFormation(undefined)
-            setEditingFormation(null)
-          }}
-          takenNames={formations.map((item) => item.name)}
-          onDuplicate={(formation, makeBase, copy) => {
-            // The original is saved as it stands, then the copy goes right after it.
-            saveFormation(formation)
-            if (makeBase) setBaseFormation(formation.id)
-            else if (baseFormation?.id === formation.id) setBaseFormation(undefined)
-            saveFormation({ id: uid('formation'), ...copy }, formation.id)
-            setEditingFormation(null)
-          }}
-          onDelete={
-            editingFormation === 'new'
-              ? undefined
-              : () => {
-                  deleteFormation(editingFormation.id)
-                  setEditingFormation(null)
-                }
-          }
-          onClose={() => setEditingFormation(null)}
-        />
+        {editingPlay && (
+          <PlayEditorPage
+            key={editingPlay === 'new' ? 'new' : editingPlay.id}
+            play={editingPlay === 'new' ? undefined : editingPlay}
+            formations={formations}
+            defaultFormationId={newPlayFormationId || baseFormation?.id}
+            onSave={(play) => {
+              savePlay(play)
+              setEditingPlay(null)
+            }}
+            onDelete={
+              editingPlay === 'new'
+                ? undefined
+                : () => {
+                    deletePlay(editingPlay.id)
+                    setEditingPlay(null)
+                  }
+            }
+            onClose={() => setEditingPlay(null)}
+          />
+        )}
+        {/* A play opened from a formation goes back to it, with any unsaved changes still there. */}
+        {editingFormation && (
+          <div hidden={Boolean(editingPlay)}>
+            <FormationEditorPage
+              key={editingFormation === 'new' ? 'new' : editingFormation.id}
+              formation={editingFormation === 'new' ? undefined : editingFormation}
+              baseFormation={baseFormation}
+              playbookName={playbook.name}
+              plays={editingFormation === 'new' ? [] : plays.filter((play) => play.formationId === editingFormation.id)}
+              onOpenPlay={setEditingPlay}
+              onNewPlay={() => editingFormation !== 'new' && newPlay(editingFormation.id)}
+              onSave={(formation, makeBase) => {
+                saveFormation(formation)
+                if (makeBase) setBaseFormation(formation.id)
+                else if (baseFormation?.id === formation.id) setBaseFormation(undefined)
+                setEditingFormation(null)
+              }}
+              takenNames={formations.map((item) => item.name)}
+              onDuplicate={(formation, makeBase, copy) => {
+                // The original is saved as it stands, then the copy goes right after it.
+                saveFormation(formation)
+                if (makeBase) setBaseFormation(formation.id)
+                else if (baseFormation?.id === formation.id) setBaseFormation(undefined)
+                saveFormation({ id: uid('formation'), ...copy }, formation.id)
+                setEditingFormation(null)
+              }}
+              onDelete={
+                editingFormation === 'new'
+                  ? undefined
+                  : () => {
+                      deleteFormation(editingFormation.id)
+                      setEditingFormation(null)
+                    }
+              }
+              onClose={() => setEditingFormation(null)}
+            />
+          </div>
+        )}
       </PackagesContext.Provider>
     )
   }
@@ -2191,7 +1680,6 @@ function PlaybookPage({
         onChange={setTab}
         options={[
           { value: 'plays', label: 'Plays' },
-          { value: 'builder', label: 'Builder' },
           { value: 'formations', label: 'Formations' },
           { value: 'packages', label: 'Packages' }
         ]}
@@ -2230,7 +1718,7 @@ function PlaybookPage({
             />
             <button
               type="button"
-              onClick={() => setEditingPlay('new')}
+              onClick={() => newPlay()}
               disabled={formations.length === 0}
               className="flex shrink-0 items-center gap-1 rounded-lg bg-[#1f7a4d] px-2.5 py-1.5 text-sm font-black text-white disabled:opacity-40"
             >
@@ -2239,36 +1727,32 @@ function PlaybookPage({
             </button>
           </div>
 
-          {formations.length === 0 && (
+          {formations.length === 0 ? (
             <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
               Build a formation first, then plays can be drawn from it.
             </p>
-          )}
-
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {formations.length > 0 && visiblePlays.length === 0 && (
-              <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c] lg:col-span-full">
-                {plays.length === 0 ? 'No plays yet. Draw one with New Play, or write one in the Builder.' : 'No plays match those filters.'}
-              </p>
-            )}
-            {visiblePlays.map((play) => {
-              const formation = formations.find((item) => item.id === play.formationId)
-              return (
-                <PlayRow
-                  key={play.id}
-                  play={play}
-                  subtitle={play.notes}
-                  meta={`${formation?.name || 'No formation'} · ${play.area}`}
-                  preview={<PlayDiagram play={play} formation={formationFor(play)} theme="turf" />}
-                  onOpen={() => setOpenPlayId(play.id)}
-                  onHold={() => setActingOnPlayId(play.id)}
+          ) : groups.length === 0 && strays.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
+              No plays match those filters.
+            </p>
+          ) : (
+            <div className="grid items-start gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {groups.map(({ formation, plays: formationPlays }) => (
+                <FormationPlaysGroup
+                  key={formation.id}
+                  formation={formation}
+                  plays={formationPlays}
+                  isBase={formation.id === baseFormation?.id}
+                  packageName={playbook.packages.length > 1 ? packageName(formation) : undefined}
+                  onOpenFormation={() => setEditingFormation(formation)}
+                  onOpenPlay={setEditingPlay}
+                  onNewPlay={() => newPlay(formation.id)}
                 />
-              )
-            })}
-          </div>
+              ))}
+              {strays.length > 0 && <FormationPlaysGroup plays={strays} isBase={false} onOpenPlay={setEditingPlay} />}
+            </div>
+          )}
         </section>
-      ) : tab === 'builder' ? (
-        <PlayBuilderPage plays={plays} formations={formations} savePlay={savePlay} deletePlay={deletePlay} />
       ) : tab === 'packages' ? (
         <PackagesPanel
           packages={playbook.packages}
@@ -2320,7 +1804,7 @@ function PlaybookPage({
                   )}
                 </span>
                 <span className="shrink-0 truncate text-[11px] font-bold text-[#53665c]">
-                  {playbook.packages.find((item) => item.id === formation.packageId)?.name || playbook.packages[0].name}
+                  {packageName(formation)}
                 </span>
               </span>
               <span className="mt-1 block">
@@ -2330,33 +1814,6 @@ function PlaybookPage({
           ))}
           </div>
         </section>
-      )}
-
-      {actingOnPlay && (
-        <PlayActionsSheet
-          play={actingOnPlay}
-          onEdit={() => {
-            setEditingPlay(actingOnPlay)
-            setActingOnPlayId(null)
-          }}
-          onDelete={() => {
-            deletePlay(actingOnPlay.id)
-            setActingOnPlayId(null)
-          }}
-          onClose={() => setActingOnPlayId(null)}
-        />
-      )}
-
-      {openPlay && (
-        <PlayDetailSheet
-          play={openPlay}
-          formation={formations.find((item) => item.id === openPlay.formationId)}
-          onEdit={() => {
-            setEditingPlay(openPlay)
-            setOpenPlayId(null)
-          }}
-          onClose={() => setOpenPlayId(null)}
-        />
       )}
 
       {exporting && (
@@ -2483,54 +1940,6 @@ function PlaybookDetailsSheet({
   )
 }
 
-function PlayDetailSheet({
-  play,
-  formation,
-  onEdit,
-  onClose
-}: {
-  play: PlaybookPlay
-  formation?: Formation
-  onEdit: () => void
-  onClose: () => void
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom lg:max-w-4xl lg:p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h3 className="font-display text-xl font-black">{play.name}</h3>
-            <p className="text-xs font-black uppercase text-[#53665c]">
-              {formation?.name || 'No formation'} · {play.type} · {play.area}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="mt-3">
-          <PlayDiagram play={play} formation={formation} theme="turf" />
-        </div>
-
-        {play.notes && <p className="mt-3 whitespace-pre-wrap text-sm font-bold text-[#53665c]">{play.notes}</p>}
-
-        <div className="mt-3 space-y-2">
-          <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white">
-            Edit Play
-          </button>
-          <SavePlayImageButton play={play} formation={formation} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 /**
  * Building a formation gets the whole page: every player in the chosen package
  * starts on the field, ready to be dragged where they line up.
@@ -2539,7 +1948,9 @@ function FormationEditorPage({
   formation,
   baseFormation,
   playbookName,
-  playCount,
+  plays,
+  onOpenPlay,
+  onNewPlay,
   takenNames,
   onSave,
   onDuplicate,
@@ -2550,7 +1961,10 @@ function FormationEditorPage({
   /** What a new formation starts from, when the playbook has one. */
   baseFormation?: Formation
   playbookName: string
-  playCount: number
+  /** The plays run from this formation. */
+  plays: PlaybookPlay[]
+  onOpenPlay: (play: PlaybookPlay) => void
+  onNewPlay: () => void
   takenNames: string[]
   onSave: (formation: FormationDraft, makeBase: boolean) => void
   /** Saves this formation as it stands, then adds the copy right after it. */
@@ -2573,6 +1987,7 @@ function FormationEditorPage({
   const [duplicating, setDuplicating] = useState(false)
   const codes = players.map((player) => player.code)
   const chosen = selected.filter((code) => codes.includes(code))
+  const playCount = plays.length
 
   /** Players both packages share keep their spots; anyone new stands in the open row at the bottom. */
   function changePackage(nextId: string) {
@@ -2609,8 +2024,8 @@ function FormationEditorPage({
         <button
           type="button"
           onClick={onClose}
-          aria-label={`${playbookName} formations`}
-          title={`${playbookName} formations`}
+          aria-label={`Back to ${playbookName}`}
+          title={`Back to ${playbookName}`}
           className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#53665c] hover:bg-white"
         >
           <ChevronLeft size={18} />
@@ -2761,6 +2176,36 @@ function FormationEditorPage({
               setPositions(nextSpots)
             }}
           />
+
+          <section className="pt-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-xs font-black uppercase text-[#53665c]">
+                Plays <span className="font-bold">({playCount})</span>
+              </h2>
+              {formation ? (
+                <button
+                  type="button"
+                  onClick={onNewPlay}
+                  className="ml-auto flex items-center gap-1 rounded-md bg-[#1f7a4d] px-2 py-1 text-xs font-black text-white"
+                >
+                  <Plus size={13} />
+                  New Play
+                </button>
+              ) : (
+                <span className="ml-auto text-xs font-bold text-[#53665c]">Save the formation to add plays to it.</span>
+              )}
+            </div>
+            {formation && playCount === 0 && <p className="mt-1 text-xs font-bold text-[#9aa79f]">No plays from this formation yet.</p>}
+            {playCount > 0 && (
+              <div className="mt-1 grid gap-1 sm:grid-cols-2 xl:grid-cols-3">
+                {byType(plays).map((play) => (
+                  <div key={play.id} className="overflow-hidden rounded-md border border-[#d8ded5]">
+                    <PlayListRow play={play} onOpen={() => onOpenPlay(play)} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
         </div>
 
         <aside className="space-y-2.5 rounded-lg border border-[#d8ded5] bg-white p-2.5">
@@ -3223,8 +2668,6 @@ function DeleteGameSheet({
 const swipeRemoveDistance = 128
 const swipeOpenDistance = 112
 const longPressDuration = 2000
-/** Holding a play brings up edit and delete. */
-const playHoldDuration = 3000
 
 /**
  * Swipe left to drop a player from today's list. A short swipe parks the row open

@@ -1,6 +1,6 @@
 import { DEFAULT_POSITIONS, placeAll } from './playbook'
 import { LINE_OF_SCRIMMAGE } from './positions'
-import { frameScale, lineEnd, LINE_STYLES, lineStart, normalizeLine, pathData, viewBox, viewOrDefault } from './play-lines'
+import { endTrim, frameScale, HALO, lineEnd, LINE_STYLES, lineStart, pathData, playLines, viewBox, viewOrDefault } from './play-lines'
 import type { Formation, PlaybookPlay, PlaybookPosition } from './types'
 
 /**
@@ -67,7 +67,7 @@ function football(point: { x: number; y: number }) {
 const reach = { x: -500, y: -400, w: 1200, h: 900 }
 
 export function playDiagramSvg(
-  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view'>>,
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion'>>,
   formation: Formation | undefined,
   positions: PlaybookPosition[] = DEFAULT_POSITIONS,
   theme: PlayDiagramTheme = 'paper',
@@ -101,21 +101,26 @@ export function playDiagramSvg(
   })
 
   const spots = placeAll(formation?.positions || {}, positions)
-  const drawn = (play.lines || []).map(normalizeLine).filter((item) => item.points.length > 0)
+  const drawn = playLines(play).filter((item) => item.points.length > 0)
+  const ends: string[] = []
   drawn.forEach((item) => {
     const start = lineStart(item, spots, drawn)
     if (!start) return
     const style = LINE_STYLES[item.kind]
     const dash = style.dash ? ` stroke-dasharray="${style.dash.split(' ').map((part) => round(Number(part) * scale)).join(' ')}"` : ''
-    // Dark green on turf needs a pale edge to read.
-    if (item.kind === 'run' && theme === 'turf') {
-      parts.push(`<path d="${pathData(item, start)}" fill="none" stroke="rgba(246,242,223,0.55)" stroke-width="${round((style.width + 0.9) * scale)}" stroke-linecap="round" stroke-linejoin="round"/>`)
+    const d = pathData(item, start, endTrim(item, scale))
+    // An arrowhead covers the cut end, so the stroke stops square under it.
+    const cap = style.end === 'arrow' ? 'butt' : 'round'
+    // Blue on turf needs a pale edge to read.
+    const halo = Boolean(style.halo) && theme === 'turf'
+    if (halo) {
+      parts.push(`<path d="${d}" fill="none" stroke="${HALO}" stroke-width="${round((style.width + 0.9) * scale)}" stroke-linecap="${cap}" stroke-linejoin="round"/>`)
     }
-    parts.push(
-      `<path d="${pathData(item, start)}" fill="none" stroke="${style.color}" stroke-width="${round(style.width * scale)}" stroke-linecap="round" stroke-linejoin="round"${dash}/>` +
-        lineEnd(item, start, scale)
-    )
+    parts.push(`<path d="${d}" fill="none" stroke="${style.color}" stroke-width="${round(style.width * scale)}" stroke-linecap="${cap}" stroke-linejoin="round"${dash}/>`)
+    ends.push(lineEnd(item, start, scale, { halo }))
   })
+  // Ends go over every line, so a bootleg leaving a fake handoff never covers its X.
+  parts.push(...ends)
 
   const fontSizeFor = (label: string) => (label.length > 2 ? 2.7 : label.length > 1 ? 3.4 : 4.2)
   positions.forEach((slot) => {

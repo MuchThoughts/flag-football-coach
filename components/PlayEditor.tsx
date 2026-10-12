@@ -1,13 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronLeft, Trash2, X } from 'lucide-react'
+import { ChevronLeft, Download, Trash2, X } from 'lucide-react'
+import CallBuilder from '@/components/CallBuilder'
 import PlayCanvas from '@/components/PlayCanvas'
+import { savePlayImage } from '@/components/PlaybookExport'
 import { usePositions } from '@/components/PositionsContext'
 import { lineOf } from '@/lib/formation-edit'
 import { PLAY_AREAS, PLAY_TYPES, placeAll } from '@/lib/playbook'
-import { normalizeLine, viewOrDefault } from '@/lib/play-lines'
-import type { Formation, PlayArea, PlaybookPlay, PlayLine, PlayType, PlayView } from '@/lib/types'
+import { classifySteps, playCallFromSteps, stepsFromPlay } from '@/lib/play-builder'
+import { LINE_VERSION, playLines, RUN_BLUE, viewOrDefault } from '@/lib/play-lines'
+import type { Formation, PlayArea, PlaybookPlay, PlayLine, PlayStep, PlayType, PlayView } from '@/lib/types'
 
 /** A play as the editor hands it over; the app fills in team, playbook and dates. */
 export type PlayEditorDraft = Omit<PlaybookPlay, 'teamId' | 'playbookId' | 'createdAt' | 'updatedAt'>
@@ -18,8 +21,9 @@ function uid(prefix: string) {
 
 /**
  * Drawing a play gets the whole page: the field on the left with the players
- * fixed in their formation, and the play's details beside it. The view the
- * play is saved at is how it shows everywhere else.
+ * fixed in their formation, and the play's details beside it, including its
+ * call, stacked up from components, which names the play. The view the play
+ * is saved at is how it shows everywhere else.
  */
 export default function PlayEditorPage({
   play,
@@ -37,37 +41,77 @@ export default function PlayEditorPage({
   onDelete?: () => void
   onClose: () => void
 }) {
-  const [name, setName] = useState(play?.name || '')
   const [formationId, setFormationId] = useState(play?.formationId || defaultFormationId || formations[0]?.id || '')
+  const formation = formations.find((item) => item.id === formationId)
+  // Plays written before the editor had a call are read back from their names where they can be.
+  const [steps, setSteps] = useState<PlayStep[]>(() => (play && stepsFromPlay(play, formations)) || [])
+  const call = steps.length > 0 ? playCallFromSteps(steps, formation?.name) : ''
+  const [name, setName] = useState(play?.name || '')
+  // The name follows the call until the coach types their own.
+  const [nameEdited, setNameEdited] = useState(() => {
+    if (!play) return false
+    const opened = stepsFromPlay(play, formations) || []
+    return opened.length === 0 || play.name !== playCallFromSteps(opened, formations.find((item) => item.id === play.formationId)?.name)
+  })
   const [type, setType] = useState<PlayType>(play?.type || 'pass')
   const [area, setArea] = useState<PlayArea>(play?.area || 'middle')
   const [notes, setNotes] = useState(play?.notes || '')
-  const [lines, setLines] = useState<PlayLine[]>(() => (play?.lines || []).map(normalizeLine))
+  const [lines, setLines] = useState<PlayLine[]>(() => (play ? playLines(play) : []))
   const [view, setView] = useState<PlayView>(() => viewOrDefault(play?.view))
   // Lines from the old freehand tool still show until the coach clears them.
   const [legacyRoutes, setLegacyRoutes] = useState(play?.routes || [])
   const [legacyFootballs, setLegacyFootballs] = useState(play?.footballs || [])
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [savingImage, setSavingImage] = useState(false)
 
-  const formation = formations.find((item) => item.id === formationId)
   const players = usePositions(formation?.packageId)
   const spots = placeAll(formation?.positions || {}, players)
+  // Anyone but the quarterback can get the ball or run a route.
+  const receivers = players
+    .filter((position) => position.type !== 'QB')
+    .map((position) => position.label.trim())
+    .filter(Boolean)
+  const displayName = nameEdited ? name : call
 
-  function save() {
-    if (!formationId) return
-    onSave({
+  /** A new call also says what kind of play it is, until the coach picks otherwise. */
+  function changeSteps(next: PlayStep[]) {
+    setSteps(next)
+    if (next.length > 0) {
+      const sorted = classifySteps(next)
+      setType(sorted.type)
+      setArea(sorted.area)
+    }
+  }
+
+  function draft(): PlayEditorDraft {
+    return {
       id: play?.id || uid('play'),
-      name: name.trim() || 'Untitled Play',
+      name: displayName.trim() || 'Untitled Play',
       formationId,
       type,
       area,
       notes: notes.trim(),
       routes: legacyRoutes,
       footballs: legacyFootballs,
-      steps: play?.steps,
+      steps,
       lines,
+      lineVersion: LINE_VERSION,
       view
-    })
+    }
+  }
+
+  function save() {
+    if (!formationId) return
+    onSave(draft())
+  }
+
+  async function saveImage() {
+    setSavingImage(true)
+    try {
+      await savePlayImage({ ...draft(), teamId: '', playbookId: '', createdAt: '', updatedAt: '' }, formation, players)
+    } finally {
+      setSavingImage(false)
+    }
   }
 
   const headerButton = 'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-black'
@@ -102,6 +146,19 @@ export default function PlayEditorPage({
           </div>
         ) : (
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {formation && (
+              <button
+                type="button"
+                onClick={saveImage}
+                disabled={savingImage}
+                aria-label="Save as Image"
+                title="Save the play as a picture, at the view on screen"
+                className={`${headerButton} border border-[#d8ded5] bg-white disabled:opacity-50`}
+              >
+                <Download size={14} />
+                <span className="hidden md:inline">Image</span>
+              </button>
+            )}
             {onDelete && (
               <button
                 type="button"
@@ -126,7 +183,7 @@ export default function PlayEditorPage({
         )}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
         <div className="mx-auto w-full" style={{ maxWidth: 'max(320px, calc((100vh - 120px) * 2))' }}>
           {formation ? (
             <PlayCanvas
@@ -147,26 +204,43 @@ export default function PlayEditorPage({
           )}
         </div>
 
-        <aside className="space-y-2.5 rounded-lg border border-[#d8ded5] bg-white p-2.5">
+        <aside className="space-y-2 rounded-lg border border-[#d8ded5] bg-white p-2.5 lg:max-h-[calc(100vh-110px)] lg:overflow-y-auto">
           <label className="block">
-            <span className={label}>Name</span>
+            <span className="flex items-baseline justify-between gap-2">
+              <span className={label}>Name</span>
+              {nameEdited && call && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNameEdited(false)
+                    setName('')
+                  }}
+                  className="truncate text-[11px] font-black text-[#1f7a4d] hover:underline"
+                >
+                  Use the call
+                </button>
+              )}
+            </span>
             <input
               autoFocus={!play}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="e.g. Trips Right Go"
+              value={displayName}
+              onChange={(event) => {
+                setName(event.target.value)
+                setNameEdited(true)
+              }}
+              placeholder="Build the call below, or type a name"
               aria-label="Play name"
-              className="mt-1 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 outline-none focus:border-[#1f7a4d]"
+              className="mt-0.5 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm font-black outline-none focus:border-[#1f7a4d]"
             />
           </label>
 
-          <label className="block">
-            <span className={label}>Formation</span>
+          <label className="flex items-center gap-2">
+            <span className={`${label} w-[4.6rem] shrink-0`}>Formation</span>
             <select
               value={formationId}
               onChange={(event) => setFormationId(event.target.value)}
               aria-label="Formation"
-              className="mt-1 w-full rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 font-black outline-none focus:border-[#1f7a4d]"
+              className="min-w-0 flex-1 rounded-lg border border-[#d8ded5] bg-white px-2 py-1 text-sm font-black outline-none focus:border-[#1f7a4d]"
             >
               {formations.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -176,18 +250,19 @@ export default function PlayEditorPage({
             </select>
           </label>
 
-          <div>
-            <span className={label}>Pass or run</span>
-            <div className="mt-1 grid grid-cols-2 gap-1">
+          <div className="flex items-center gap-2">
+            <span className={`${label} w-[4.6rem] shrink-0`}>Type</span>
+            <div className="grid flex-1 grid-cols-2 gap-1">
               {PLAY_TYPES.map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setType(option)}
                   aria-pressed={type === option}
-                  className={`rounded-md border px-2 py-1 text-sm font-black capitalize ${
-                    type === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
+                  className={`rounded-md border px-2 py-0.5 text-xs font-black capitalize ${
+                    type === option ? 'border-transparent text-white' : 'border-[#d8ded5] bg-white text-[#53665c]'
                   }`}
+                  style={type === option ? { background: option === 'run' ? RUN_BLUE : '#10201a' } : undefined}
                 >
                   {option}
                 </button>
@@ -195,17 +270,17 @@ export default function PlayEditorPage({
             </div>
           </div>
 
-          <div>
-            <span className={label}>Area of attack</span>
-            <div className="mt-1 grid grid-cols-3 gap-1">
+          <div className="flex items-center gap-2">
+            <span className={`${label} w-[4.6rem] shrink-0`}>Area</span>
+            <div className="grid flex-1 grid-cols-3 gap-1">
               {PLAY_AREAS.map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setArea(option)}
                   aria-pressed={area === option}
-                  className={`rounded-md border px-1 py-1 text-xs font-black capitalize ${
-                    area === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
+                  className={`rounded-md border px-1 py-0.5 text-xs font-black capitalize ${
+                    area === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white text-[#53665c]'
                   }`}
                 >
                   {option}
@@ -214,15 +289,21 @@ export default function PlayEditorPage({
             </div>
           </div>
 
-          <label className="block">
+          <div className="border-t border-[#eef0ea] pt-1.5">
+            <span className={label}>Call</span>
+            <p className="mb-1 text-xs font-bold leading-tight text-[#53665c]">{call || 'Add components to build the call; it names the play.'}</p>
+            <CallBuilder steps={steps} onChange={changeSteps} receivers={receivers} />
+          </div>
+
+          <label className="block border-t border-[#eef0ea] pt-1.5">
             <span className={label}>Notes</span>
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              rows={3}
+              rows={2}
               placeholder="Reads, when to call it"
               aria-label="Play notes"
-              className="mt-1 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm outline-none focus:border-[#1f7a4d]"
+              className="mt-0.5 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm outline-none focus:border-[#1f7a4d]"
             />
           </label>
 

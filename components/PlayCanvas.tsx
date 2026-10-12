@@ -5,17 +5,22 @@ import { Maximize, Minus, Plus, Trash2 } from 'lucide-react'
 import {
   bendThrough,
   DEFAULT_VIEW,
+  endTrim,
   frameScale,
+  HALO,
+  handoffSpot,
   insertPivot,
   LINE_KINDS,
   lineEnd,
   linePath,
   lineStart,
   LINE_STYLES,
-  motionEnd,
-  movePoint,
+  lineTip,
+  moveLinePoint,
   newLine,
   pathData,
+  removeLine,
+  RUN_BLUE,
   removePivot,
   segmentData,
   segmentMiddle,
@@ -61,8 +66,9 @@ function capturePointer(element: Element, pointerId: number) {
  * The play editor's field. Players stay put; lines come out of them.
  *
  * - Drag empty grass to move around; wheel, pinch or the buttons to zoom.
- * - Tap a player for the menu: Block, Motion, Route, Run, Fake.
+ * - Tap a player for the menu: Block, Motion, Route, Run, Fake, Handoff, Fake Handoff.
  * - Tap a line to select it. Drag its end (or any pivot) to reshape it.
+ * - After a motion or a handoff, the selected line's menu adds what the player does next.
  * - Double-click or hold on a line to add a pivot there; double-click a pivot to remove it.
  * - Drag the yellow dot in the middle of a segment to curve it.
  */
@@ -285,7 +291,7 @@ export default function PlayCanvas({
 
     const at = toField(event.clientX, event.clientY)
     if (drag.kind === 'point') {
-      updateLine(drag.lineId, (line) => movePoint(line, drag.index, at))
+      onLinesChange(moveLinePoint(lines, drag.lineId, drag.index, at))
       return
     }
     // Pulling a segment's middle curves it through the pointer.
@@ -333,28 +339,49 @@ export default function PlayCanvas({
     }
   }
 
-  function addLine(kind: PlayLineKind) {
-    if (!selectedPlayer || !spots[selectedPlayer]) return
-    const start = kind === 'motion' ? spots[selectedPlayer] : motionEnd(lines, selectedPlayer) || spots[selectedPlayer]
-    const line = newLine(uid('line'), kind, selectedPlayer, start)
+  /** Who a handoff goes to: the nearest running back, or else the nearest player behind. */
+  function handoffEnd(code: string, start: FieldPoint): FieldPoint | undefined {
+    const others = players.filter((item) => item.code !== code && spots[item.code])
+    const backs = others.filter((item) => item.type === 'RB')
+    const behind = others.filter((item) => spots[item.code].y > start.y + 1)
+    const pool = backs.length > 0 ? backs : behind
+    const distance = (item: PlaybookPosition) => Math.hypot((spots[item.code].x - start.x) * 2, spots[item.code].y - start.y)
+    const target = [...pool].sort((a, b) => distance(a) - distance(b))[0]
+    return target ? handoffSpot(start, spots[target.code]) : undefined
+  }
+
+  function create(kind: PlayLineKind, code: string, start: FieldPoint, from?: PlayLine) {
+    const end = kind === 'handoff' || kind === 'fakeHandoff' ? handoffEnd(code, start) : undefined
+    const line = newLine(uid('line'), kind, code, start, { end, from })
     onLinesChange([...lines, line])
     setSelectedLine(line.id)
     setSelectedPlayer(null)
   }
 
-  /** A motion takes the lines that started from it back to the player. */
+  function addLine(kind: PlayLineKind) {
+    if (!selectedPlayer || !spots[selectedPlayer]) return
+    create(kind, selectedPlayer, spots[selectedPlayer])
+  }
+
+  /** What the player does next, from where the selected line ends. */
+  function addFollow(kind: PlayLineKind) {
+    const tip = selected && lineTip(selected)
+    if (!selected || !tip) return
+    create(kind, selected.playerCode, tip, selected)
+  }
+
+  /** Anything that followed the line now starts from where it started. */
   function deleteLine(lineId: string) {
-    onLinesChange(lines.filter((item) => item.id !== lineId))
+    onLinesChange(removeLine(lines, lineId))
     setSelectedLine(null)
   }
 
   function changeKind(kind: PlayLineKind) {
-    if (!selected || selected.kind === 'motion' || kind === 'motion') return
+    if (!selected) return
     updateLine(selected.id, (line) => ({ ...line, kind }))
   }
 
   const ordered = [...lines.filter((item) => item.id !== selectedLine), ...(selected ? [selected] : [])]
-  const playerHasMotion = selectedPlayer ? lines.some((item) => item.kind === 'motion' && item.playerCode === selectedPlayer) : false
   const playerLines = selectedPlayer ? lines.filter((item) => item.playerCode === selectedPlayer) : []
   const fontSize = (label: string) => (label.length > 2 ? 2.7 : label.length > 1 ? 3.4 : 4.2)
   const menuButton = 'rounded-md px-2.5 py-1 text-xs font-black'
@@ -405,25 +432,26 @@ export default function PlayCanvas({
             const isSelected = item.id === selectedLine
             const path = linePath(item, start)
             const end = toWorld(path[path.length - 1])
+            const d = pathData(item, start, endTrim(item, scale))
+            const cap = style.end === 'arrow' ? 'butt' : 'round'
             return (
               <g key={item.id}>
                 {isSelected && (
                   <path d={pathData(item, start)} fill="none" stroke="#f7c948" strokeWidth={(style.width + 2.4) * scale} strokeLinecap="round" strokeLinejoin="round" opacity={0.95} style={{ pointerEvents: 'none' }} />
                 )}
-                {item.kind === 'run' && (
-                  <path d={pathData(item, start)} fill="none" stroke="rgba(246,242,223,0.55)" strokeWidth={(style.width + 0.9) * scale} strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: 'none' }} />
+                {style.halo && (
+                  <path d={d} fill="none" stroke={HALO} strokeWidth={(style.width + 0.9) * scale} strokeLinecap={cap} strokeLinejoin="round" style={{ pointerEvents: 'none' }} />
                 )}
                 <path
-                  d={pathData(item, start)}
+                  d={d}
                   fill="none"
                   stroke={style.color}
                   strokeWidth={style.width * scale}
-                  strokeLinecap="round"
+                  strokeLinecap={cap}
                   strokeLinejoin="round"
                   strokeDasharray={style.dash ? style.dash.split(' ').map((part) => Number(part) * scale).join(' ') : undefined}
                   style={{ pointerEvents: 'none' }}
                 />
-                <g style={{ pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: lineEnd(item, start, scale) }} />
                 {path.slice(1).map((to, segment) => (
                   <path
                     key={segment}
@@ -438,10 +466,17 @@ export default function PlayCanvas({
                 ))}
                 {/* The end can always be grabbed, selected or not. */}
                 {item.kind !== 'motion' && (
-                  <circle data-point={`${item.id}|${item.points.length - 1}`} cx={end.x} cy={end.y} r={2.6 * scale} fill="transparent" style={{ cursor: 'move' }} />
+                  <circle data-point={`${item.id}|${item.points.length - 1}`} cx={end.x} cy={end.y} r={(style.end === 'x' ? 3.6 : 2.6 * scale)} fill="transparent" style={{ cursor: 'move' }} />
                 )}
               </g>
             )
+          })}
+
+          {/* Ends go over every line, so a line leaving a handoff never covers its X. */}
+          {ordered.map((item) => {
+            const start = startOf(item)
+            if (!start || item.points.length === 0) return null
+            return <g key={`end-${item.id}`} style={{ pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: lineEnd(item, start, scale, { halo: LINE_STYLES[item.kind].halo }) }} />
           })}
 
           {players.map((slot) => {
@@ -551,16 +586,7 @@ export default function PlayCanvas({
                 <>
                   <span className="px-1.5 text-xs font-black text-[#f7c948]">{player.label}</span>
                   {LINE_KINDS.map((kind) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      disabled={kind === 'motion' && playerHasMotion}
-                      onClick={() => addLine(kind)}
-                      className={`${menuButton} bg-white/10 hover:bg-white/20 disabled:opacity-30`}
-                      style={{ boxShadow: `inset 0 -2px 0 ${kind === 'run' ? '#3fbf7f' : LINE_STYLES[kind].color === '#10201a' ? '#ffffff55' : LINE_STYLES[kind].color}` }}
-                    >
-                      {LINE_STYLES[kind].label}
-                    </button>
+                    <KindButton key={kind} kind={kind} onClick={() => addLine(kind)} />
                   ))}
                   {playerLines.length > 0 && (
                     <button
@@ -575,37 +601,61 @@ export default function PlayCanvas({
               )}
               {selected && (
                 <>
-                  {selected.kind === 'motion' ? (
-                    <span className="px-1.5 text-xs font-black text-[#f7c948]">Motion</span>
-                  ) : (
-                    LINE_KINDS.filter((kind) => kind !== 'motion').map((kind) => (
-                      <button
-                        key={kind}
-                        type="button"
-                        onClick={() => changeKind(kind)}
-                        aria-pressed={selected.kind === kind}
-                        className={`${menuButton} ${selected.kind === kind ? 'bg-[#f7c948] text-[#10201a]' : 'bg-white/10 hover:bg-white/20'}`}
-                      >
+                  <select
+                    value={selected.kind}
+                    onChange={(event) => changeKind(event.target.value as PlayLineKind)}
+                    aria-label="Line type"
+                    className="rounded-md bg-[#f7c948] px-1.5 py-1 text-xs font-black text-[#10201a] outline-none"
+                  >
+                    {LINE_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
                         {LINE_STYLES[kind].label}
-                      </button>
-                    ))
+                      </option>
+                    ))}
+                  </select>
+                  {LINE_STYLES[selected.kind].follow && (
+                    <>
+                      <span className="pl-1 text-[10px] font-black uppercase text-white/60">Then</span>
+                      {LINE_KINDS.map((kind) => (
+                        <KindButton key={kind} kind={kind} onClick={() => addFollow(kind)} label={`Then ${LINE_STYLES[kind].label}`} />
+                      ))}
+                    </>
                   )}
                   <button type="button" onClick={() => deleteLine(selected.id)} aria-label="Delete line" className={`${menuButton} flex items-center gap-1 text-[#f0a090] hover:bg-white/10`}>
                     <Trash2 size={12} />
                     Delete
                   </button>
-                  <span className="hidden px-1 text-[10px] font-bold text-white/60 lg:inline">
-                    Double-click or hold the line to add a pivot · drag a yellow dot to curve
-                  </span>
+                  {!LINE_STYLES[selected.kind].follow && (
+                    <span className="hidden px-1 text-[10px] font-bold text-white/60 lg:inline">
+                      Double-click or hold the line to add a pivot · drag a yellow dot to curve
+                    </span>
+                  )}
                 </>
               )}
             </div>
           </div>
         ) : (
           <p className="py-1 text-xs font-bold text-[#53665c]">
-            Tap a player to add a line. Drag the grass to move around; scroll or pinch to zoom. The view you save is how the play prints.
+            Tap a player to add a line. After a motion or handoff, tap its end to add what comes next. Drag the grass to move around; scroll or pinch to zoom.
           </p>
         )}
     </div>
+  )
+}
+
+/** A line type in the menu, underlined in the colour it draws in. */
+function KindButton({ kind, onClick, label }: { kind: PlayLineKind; onClick: () => void; label?: string }) {
+  const style = LINE_STYLES[kind]
+  const underline = style.color === '#10201a' ? '#ffffff55' : style.color === RUN_BLUE ? '#6a9bff' : '#f08070'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label || style.label}
+      className="rounded-md bg-white/10 px-2 py-1 text-xs font-black hover:bg-white/20"
+      style={{ boxShadow: `inset 0 -2px 0 ${underline}` }}
+    >
+      {style.label}
+    </button>
   )
 }

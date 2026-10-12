@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Download, Printer, X } from 'lucide-react'
+import { Printer, X } from 'lucide-react'
 import { usePositions } from '@/components/PositionsContext'
 import { playDiagramSvg, playFileName, type PlayDiagramTheme } from '@/lib/play-svg'
 import type { Formation, PlaybookPlay, PlaybookPosition } from '@/lib/types'
@@ -13,7 +13,7 @@ export function PlayDiagram({
   theme = 'paper',
   labels = true
 }: {
-  play: Pick<PlaybookPlay, 'routes' | 'footballs'>
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion'>>
   formation?: Formation
   theme?: PlayDiagramTheme
   labels?: boolean
@@ -67,34 +67,6 @@ export async function savePlayImage(play: PlaybookPlay, formation: Formation | u
   } finally {
     URL.revokeObjectURL(url)
   }
-}
-
-export function SavePlayImageButton({ play, formation }: { play: PlaybookPlay; formation?: Formation }) {
-  const [saving, setSaving] = useState(false)
-  const [failed, setFailed] = useState(false)
-  const positions = usePositions(formation?.packageId)
-
-  return (
-    <button
-      type="button"
-      disabled={saving}
-      onClick={async () => {
-        setSaving(true)
-        setFailed(false)
-        try {
-          await savePlayImage(play, formation, positions)
-        } catch {
-          setFailed(true)
-        } finally {
-          setSaving(false)
-        }
-      }}
-      className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] px-3 py-2 font-black disabled:opacity-50"
-    >
-      <Download size={16} />
-      {failed ? 'Could not save, try again' : saving ? 'Saving…' : 'Save as Image'}
-    </button>
-  )
 }
 
 /**

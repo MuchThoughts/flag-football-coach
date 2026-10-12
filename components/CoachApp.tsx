@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import {
+  AlignCenterHorizontal,
+  AlignCenterVertical,
+  AlignHorizontalSpaceAround,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -14,6 +17,7 @@ import {
   Plus,
   RotateCcw,
   Save,
+  Star,
   Trash2,
   Undo2,
   X
@@ -61,6 +65,8 @@ import { LINEUPS_PER_UNIT } from '@/lib/types'
 import PlaybookField from '@/components/PlaybookField'
 import { PlayDiagram, PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
 import { PackagesPanel } from '@/components/Packages'
+import FormationCanvas from '@/components/FormationCanvas'
+import { alignHorizontally, alignVertically, lineOf, spaceEvenly } from '@/lib/formation-edit'
 import { CallSheetsSheet } from '@/components/CallSheets'
 import PlaybookLibrary, { type PlaybookOverview } from '@/components/PlaybookLibrary'
 import { PackagesContext, usePackages, usePositions } from '@/components/PositionsContext'
@@ -713,6 +719,11 @@ export default function CoachApp() {
     )
   }
 
+  /** The formation new formations start from and new plays default to; undefined clears it. */
+  function setBaseFormation(playbookId: string, formationId: string | undefined) {
+    setPlaybooks((items) => items.map((playbook) => (playbook.id === playbookId ? { ...playbook, baseFormationId: formationId } : playbook)))
+  }
+
   /** Grows or shrinks every package in a playbook to the same number of players. */
   function setPlayerCount(playbookId: string, count: number) {
     const now = new Date().toISOString()
@@ -1004,6 +1015,7 @@ export default function CoachApp() {
             savePlay={(draft) => savePlay(openPlaybook.id, draft)}
             deletePlay={deletePlay}
             saveFormation={(draft) => saveFormation(openPlaybook.id, draft)}
+            setBaseFormation={(formationId) => setBaseFormation(openPlaybook.id, formationId)}
             deleteFormation={deleteFormation}
             addCallSheet={(name) => addCallSheet(openPlaybook.id, name)}
             saveCallSheet={saveCallSheet}
@@ -1648,7 +1660,7 @@ function PlayBuilderPage({
                   </span>
                 </div>
                 <div className="mt-2">
-                  <PlaybookField positions={item.positions} packageId={item.packageId} compact />
+                  <PlaybookField positions={item.positions} packageId={item.packageId} lineOfScrimmage={item.lineOfScrimmage} compact />
                 </div>
               </button>
             ))}
@@ -1693,7 +1705,7 @@ function PlayBuilderPage({
         </button>
       </div>
 
-      <PlaybookField positions={formation.positions} packageId={formation.packageId} compact />
+      <PlaybookField positions={formation.positions} packageId={formation.packageId} lineOfScrimmage={formation.lineOfScrimmage} compact />
 
       <section className="rounded-lg border border-[#d8ded5] bg-white p-3">
         <p className="text-xs font-black uppercase tracking-wide text-[#53665c]">The call</p>
@@ -2009,6 +2021,7 @@ function PlaybookPage({
   savePlay,
   deletePlay,
   saveFormation,
+  setBaseFormation,
   deleteFormation,
   addCallSheet,
   saveCallSheet,
@@ -2030,6 +2043,7 @@ function PlaybookPage({
   savePlay: (play: PlayDraft) => void
   deletePlay: (playId: string) => void
   saveFormation: (formation: FormationDraft) => void
+  setBaseFormation: (formationId: string | undefined) => void
   deleteFormation: (formationId: string) => void
   addCallSheet: (name: string) => CallSheet
   saveCallSheet: (sheet: CallSheet) => void
@@ -2049,6 +2063,7 @@ function PlaybookPage({
   const openPlay = plays.find((play) => play.id === openPlayId)
   const actingOnPlay = plays.find((play) => play.id === actingOnPlayId)
   const formationFor = (play: PlaybookPlay) => formations.find((item) => item.id === play.formationId)
+  const baseFormation = formations.find((item) => item.id === playbook.baseFormationId)
 
   if (editingFormation) {
     return (
@@ -2056,10 +2071,13 @@ function PlaybookPage({
         <FormationEditorPage
           key={editingFormation === 'new' ? 'new' : editingFormation.id}
           formation={editingFormation === 'new' ? undefined : editingFormation}
+          baseFormation={baseFormation}
           playbookName={playbook.name}
           playCount={editingFormation === 'new' ? 0 : countPlaysByFormation(plays, editingFormation.id)}
-          onSave={(formation) => {
+          onSave={(formation, makeBase) => {
             saveFormation(formation)
+            if (makeBase) setBaseFormation(formation.id)
+            else if (baseFormation?.id === formation.id) setBaseFormation(undefined)
             setEditingFormation(null)
           }}
           onDelete={
@@ -2249,7 +2267,12 @@ function PlaybookPage({
             <div key={formation.id} className="rounded-lg border border-[#d8ded5] bg-white p-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="truncate font-black">{formation.name}</p>
+                  <p className="flex items-center gap-1 truncate font-black">
+                    {formation.name}
+                    {formation.id === baseFormation?.id && (
+                      <Star size={11} className="shrink-0 fill-[#f7c948] text-[#b98a00]" aria-label="Base formation" />
+                    )}
+                  </p>
                   <p className="truncate text-xs font-bold text-[#53665c]">
                     {playbook.packages.find((item) => item.id === formation.packageId)?.name || playbook.packages[0].name} ·{' '}
                     {countPlaysByFormation(plays, formation.id)} play
@@ -2265,7 +2288,7 @@ function PlaybookPage({
                 </button>
               </div>
               <div className="mt-1.5">
-                <PlaybookField positions={formation.positions} packageId={formation.packageId} compact />
+                <PlaybookField positions={formation.positions} packageId={formation.packageId} lineOfScrimmage={formation.lineOfScrimmage} compact />
               </div>
             </div>
           ))}
@@ -2292,6 +2315,7 @@ function PlaybookPage({
         <PlayEditorSheet
           play={editingPlay === 'new' ? undefined : editingPlay}
           formations={formations}
+          defaultFormationId={baseFormation?.id}
           onSave={(play) => {
             savePlay(play)
             setEditingPlay(null)
@@ -2480,6 +2504,7 @@ function PlayDetailSheet({
           <PlaybookField
             positions={formation?.positions || {}}
             packageId={formation?.packageId}
+            lineOfScrimmage={formation?.lineOfScrimmage}
             routes={play.routes}
             footballs={play.footballs}
             fullscreenOnLandscape
@@ -2502,18 +2527,21 @@ function PlayDetailSheet({
 function PlayEditorSheet({
   play,
   formations,
+  defaultFormationId,
   onSave,
   onDelete,
   onClose
 }: {
   play?: PlaybookPlay
   formations: Formation[]
+  /** The playbook's base formation, picked for a new play. */
+  defaultFormationId?: string
   onSave: (play: PlayDraft) => void
   onDelete?: () => void
   onClose: () => void
 }) {
   const [name, setName] = useState(play?.name || '')
-  const [formationId, setFormationId] = useState(play?.formationId || formations[0]?.id || '')
+  const [formationId, setFormationId] = useState(play?.formationId || defaultFormationId || formations[0]?.id || '')
   const [type, setType] = useState<PlayType>(play?.type || 'pass')
   const [area, setArea] = useState<PlayArea>(play?.area || 'middle')
   const [notes, setNotes] = useState(play?.notes || '')
@@ -2582,6 +2610,7 @@ function PlayEditorSheet({
           <PlaybookField
             positions={formation?.positions || {}}
             packageId={formation?.packageId}
+            lineOfScrimmage={formation?.lineOfScrimmage}
             routes={routes}
             footballs={footballs}
             onRoutesChange={setRoutes}
@@ -2685,6 +2714,7 @@ function PlayEditorSheet({
  */
 function FormationEditorPage({
   formation,
+  baseFormation,
   playbookName,
   playCount,
   onSave,
@@ -2692,27 +2722,35 @@ function FormationEditorPage({
   onClose
 }: {
   formation?: Formation
+  /** What a new formation starts from, when the playbook has one. */
+  baseFormation?: Formation
   playbookName: string
   playCount: number
-  onSave: (formation: FormationDraft) => void
+  onSave: (formation: FormationDraft, makeBase: boolean) => void
   onDelete?: () => void
   onClose: () => void
 }) {
   const packages = usePackages()
+  const startFrom = formation || baseFormation
   const [name, setName] = useState(formation?.name || '')
   const [packageId, setPackageId] = useState(
-    packages.some((item) => item.id === formation?.packageId) ? formation!.packageId : packages[0].id
+    packages.some((item) => item.id === startFrom?.packageId) ? startFrom!.packageId : packages[0].id
   )
   const players = usePositions(packageId)
-  const startingSpots = layoutPositions(players)
-  const [positions, setPositions] = useState<SlotPositions>(() => placeAll(formation?.positions || {}, players))
+  const [positions, setPositions] = useState<SlotPositions>(() => placeAll(startFrom?.positions || {}, players))
+  const [line, setLine] = useState(lineOf(startFrom))
+  const [selected, setSelected] = useState<string[]>([])
+  const [makeBase, setMakeBase] = useState(Boolean(formation && baseFormation?.id === formation.id))
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const codes = players.map((player) => player.code)
+  const chosen = selected.filter((code) => codes.includes(code))
 
   /** Players both packages share keep their spots; anyone new stands in the open row at the bottom. */
   function changePackage(nextId: string) {
     const next = packages.find((item) => item.id === nextId)
     if (!next) return
     setPackageId(nextId)
+    setSelected([])
     setPositions((current) => ({ ...current, ...placeAll(current, next.positions) }))
   }
 
@@ -2722,8 +2760,14 @@ function FormationEditorPage({
       next[player.code] = positions[player.code] || placeAll(positions, players)[player.code]
       return next
     }, {})
-    onSave({ id: formation?.id || uid('formation'), name: name.trim() || 'Formation', packageId, positions: kept })
+    onSave(
+      { id: formation?.id || uid('formation'), name: name.trim() || 'Formation', packageId, positions: kept, lineOfScrimmage: line },
+      makeBase
+    )
   }
+
+  const toolButton =
+    'flex items-center gap-1 rounded-md border border-[#d8ded5] bg-white px-2 py-1 text-xs font-black disabled:opacity-40'
 
   return (
     <div className="space-y-2 py-2">
@@ -2738,7 +2782,6 @@ function FormationEditorPage({
           <ChevronLeft size={18} />
         </button>
         <h1 className="font-display text-xl font-black">{formation ? 'Edit Formation' : 'New Formation'}</h1>
-        <p className="hidden text-xs font-bold text-[#53665c] sm:block">Drag each player to where they line up.</p>
         <div className="ml-auto flex shrink-0 gap-1.5">
           <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm font-black">
             Cancel
@@ -2749,18 +2792,77 @@ function FormationEditorPage({
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
-        <div className="mx-auto w-full" style={{ maxWidth: 'max(320px, calc((100vh - 130px) * 2))' }}>
-        <PlaybookField
-          positions={positions}
-          packageId={packageId}
-          onMovePosition={(slotCode, position) => setPositions((current) => ({ ...current, [slotCode]: position }))}
-          fullscreenOnLandscape
-          large
-        />
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
+        <div className="mx-auto w-full space-y-1.5" style={{ maxWidth: 'max(320px, calc((100vh - 150px) * 2))' }}>
+          <div className="flex min-h-[30px] flex-wrap items-center gap-1.5">
+            {chosen.length === 0 ? (
+              <p className="text-xs font-bold text-[#53665c]">
+                Drag players to place them. Shift-click, or drag a box, to select several and move them together.
+              </p>
+            ) : (
+              <>
+                <span className="text-xs font-black">{chosen.length} selected</span>
+                <button
+                  type="button"
+                  disabled={chosen.length < 2}
+                  onClick={() => setPositions((current) => alignHorizontally(current, chosen, line))}
+                  title="Line the selected players up in a row across the field"
+                  aria-label="Align Horizontally"
+                  className={toolButton}
+                >
+                  <AlignCenterHorizontal size={14} />
+                  <span className="hidden sm:inline">Align Horizontally</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={chosen.length < 2}
+                  onClick={() => setPositions((current) => alignVertically(current, chosen))}
+                  title="Line the selected players up in a column"
+                  aria-label="Align Vertically"
+                  className={toolButton}
+                >
+                  <AlignCenterVertical size={14} />
+                  <span className="hidden sm:inline">Align Vertically</span>
+                </button>
+                <button
+                  type="button"
+                  disabled={chosen.length < 3}
+                  onClick={() => setPositions((current) => spaceEvenly(current, chosen))}
+                  title="Even gaps between the selected players; the two ends stay put"
+                  aria-label="Space Evenly"
+                  className={toolButton}
+                >
+                  <AlignHorizontalSpaceAround size={14} />
+                  <span className="hidden sm:inline">Space Evenly</span>
+                </button>
+                <button type="button" onClick={() => setSelected([])} className="px-1 text-xs font-black text-[#53665c] hover:underline">
+                  Clear
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => setSelected(codes)}
+              className="ml-auto px-1 text-xs font-black text-[#1f7a4d] hover:underline"
+            >
+              Select all
+            </button>
+          </div>
+          <FormationCanvas
+            players={players}
+            spots={positions}
+            line={line}
+            selected={chosen}
+            onSelect={setSelected}
+            onChange={setPositions}
+            onLineChange={(nextLine, nextSpots) => {
+              setLine(nextLine)
+              setPositions(nextSpots)
+            }}
+          />
         </div>
 
-        <aside className="space-y-3 rounded-lg border border-[#d8ded5] bg-white p-2.5">
+        <aside className="space-y-2.5 rounded-lg border border-[#d8ded5] bg-white p-2.5">
           <label className="block">
             <span className="text-xs font-black uppercase text-[#53665c]">Name</span>
             <input
@@ -2774,13 +2876,13 @@ function FormationEditorPage({
 
           <div>
             <span className="text-xs font-black uppercase text-[#53665c]">Personnel</span>
-            <div className="mt-1 space-y-1.5">
+            <div className="mt-1 space-y-1">
               {packages.map((item) => (
                 <button
                   key={item.id}
                   type="button"
                   onClick={() => changePackage(item.id)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left ${
+                  className={`w-full rounded-lg border px-2.5 py-1.5 text-left ${
                     item.id === packageId ? 'border-[#1f7a4d] bg-[#eef6f0]' : 'border-[#d8ded5] hover:border-[#10201a]'
                   }`}
                 >
@@ -2795,16 +2897,19 @@ function FormationEditorPage({
 
           <button
             type="button"
-            onClick={() => setPositions((current) => ({ ...current, ...startingSpots }))}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] px-3 py-2.5 text-sm font-black"
+            onClick={() => {
+              setPositions((current) => ({ ...current, ...layoutPositions(players) }))
+              setLine(LINE_OF_SCRIMMAGE)
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] px-3 py-1.5 text-sm font-black"
           >
-            <RotateCcw size={15} />
+            <RotateCcw size={14} />
             Reset Spots
           </button>
 
           {onDelete &&
             (confirmingDelete ? (
-              <div className="rounded-lg border border-[#c2412d] p-3">
+              <div className="rounded-lg border border-[#c2412d] p-2.5">
                 <p className="text-sm font-bold text-[#53665c]">
                   Deleting this formation also deletes its {playCount} play{playCount === 1 ? '' : 's'}.
                 </p>
@@ -2812,11 +2917,11 @@ function FormationEditorPage({
                   <button
                     type="button"
                     onClick={() => setConfirmingDelete(false)}
-                    className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black"
+                    className="rounded-lg border border-[#d8ded5] px-3 py-1.5 font-black"
                   >
                     Cancel
                   </button>
-                  <button type="button" onClick={onDelete} className="rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white">
+                  <button type="button" onClick={onDelete} className="rounded-lg bg-[#c2412d] px-3 py-1.5 font-black text-white">
                     Delete
                   </button>
                 </div>
@@ -2825,12 +2930,24 @@ function FormationEditorPage({
               <button
                 type="button"
                 onClick={() => setConfirmingDelete(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-black text-[#c2412d] hover:bg-[#fbeeeb]"
+                className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-black text-[#c2412d] hover:bg-[#fbeeeb]"
               >
-                <Trash2 size={15} />
+                <Trash2 size={14} />
                 Delete Formation
               </button>
             ))}
+
+          {/* Rarely used, so it stays out of the way. */}
+          <button
+            type="button"
+            onClick={() => setMakeBase((current) => !current)}
+            aria-pressed={makeBase}
+            title="New formations start from the base formation, and new plays use it by default. Applies when you save."
+            className="flex w-full items-center justify-center gap-1 text-[11px] font-bold text-[#53665c] hover:text-[#10201a]"
+          >
+            <Star size={11} className={makeBase ? 'fill-[#f7c948] text-[#b98a00]' : ''} />
+            {makeBase ? 'Base formation' : 'Set as base formation'}
+          </button>
         </aside>
       </div>
     </div>

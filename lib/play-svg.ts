@@ -71,12 +71,13 @@ export function playDiagramSvg(
   const colors = themes[theme]
   const parts: string[] = []
 
+  const line = formation?.lineOfScrimmage ?? LINE_OF_SCRIMMAGE
   parts.push(`<rect width="${width}" height="${height}" fill="${colors.field}"/>`)
   for (let x = 20; x < width; x += 20) {
     parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${height}" stroke="${colors.yardLine}" stroke-width="0.4"/>`)
   }
   parts.push(
-    `<line x1="0" y1="${LINE_OF_SCRIMMAGE}" x2="${width}" y2="${LINE_OF_SCRIMMAGE}" stroke="${colors.scrimmage}" stroke-width="0.5"/>`
+    `<line x1="0" y1="${line}" x2="${width}" y2="${line}" stroke="${colors.scrimmage}" stroke-width="0.5"/>`
   )
 
   play.routes.forEach((route) => {

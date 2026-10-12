@@ -161,6 +161,8 @@ export interface Formation {
   playbookId: string
   /** Which personnel package lines up in it. */
   packageId: string
+  /** Where the line of scrimmage sits, top to bottom in field percent. */
+  lineOfScrimmage?: number
   name: string
   positions: SlotPositions
   createdAt: string
@@ -207,6 +209,8 @@ export interface Playbook {
   name: string
   /** The personnel packages this playbook lines up in; the first is the default. */
   packages: PersonnelPackage[]
+  /** The formation new formations start from and new plays default to. */
+  baseFormationId?: string
   createdAt: string
   updatedAt: string
 }

@@ -52,7 +52,7 @@ function nearest(values: number[], value: number, range: number) {
  * Snaps a dragged marker: the line of scrimmage pulls hardest, then lining up
  * with a neighbouring marker, and otherwise the grid.
  */
-export function snapToField(point: FieldPoint, others: FieldPoint[]): SnapResult {
+export function snapToField(point: FieldPoint, others: FieldPoint[], line = LINE_OF_SCRIMMAGE): SnapResult {
   const result: SnapResult = { x: point.x, y: point.y, onLine: false }
 
   const alignedX = nearest(
@@ -67,8 +67,8 @@ export function snapToField(point: FieldPoint, others: FieldPoint[]): SnapResult
     result.alignedX = alignedX
   }
 
-  if (Math.abs(point.y - LINE_OF_SCRIMMAGE) <= lineRange) {
-    result.y = LINE_OF_SCRIMMAGE
+  if (Math.abs(point.y - line) <= lineRange) {
+    result.y = line
     result.onLine = true
   } else {
     const alignedY = nearest(
@@ -90,7 +90,7 @@ export function snapToField(point: FieldPoint, others: FieldPoint[]): SnapResult
   // Clamping can pull a marker off the thing it snapped to.
   if (result.alignedX !== undefined && result.alignedX !== result.x) delete result.alignedX
   if (result.alignedY !== undefined && result.alignedY !== result.y) delete result.alignedY
-  if (result.onLine && result.y !== LINE_OF_SCRIMMAGE) result.onLine = false
+  if (result.onLine && result.y !== line) result.onLine = false
 
   return result
 }

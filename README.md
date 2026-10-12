@@ -91,7 +91,17 @@ the field, ready to drag in. Removing a player asks first, and takes the last
 row off every package.
 
 **New Formation** opens a full page with every player in the chosen package
-already on the field, ready to drag into place. Switching a formation to
+already on the field, ready to drag into place. The field stays put: no
+scrolling or zooming. Click a player to select them; shift-click, or drag a
+box over empty grass, to select several, then drag any of them to move the
+group (arrow keys nudge it). With two or more selected, **Align
+Horizontally** puts them in a row, **Align Vertically** in a column, and
+**Space Evenly** evens out the gaps. Drag the **LOS** tab beside the field to
+move the line of scrimmage; players standing on the line move with it.
+
+The small **Set as base formation** link at the bottom of the panel makes a
+formation the playbook's base: new formations start from it and new plays
+pick it first. Switching a formation to
 another package keeps everyone's spot and only changes the labels.
 
 ## Call sheets

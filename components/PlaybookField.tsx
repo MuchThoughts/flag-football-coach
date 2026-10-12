@@ -80,7 +80,8 @@ export default function PlaybookField({
   compact = false,
   fullscreenOnLandscape = false,
   packageId,
-  large = false
+  large = false,
+  lineOfScrimmage = LINE_OF_SCRIMMAGE
 }: {
   positions: SlotPositions
   routes?: PlayRoute[]
@@ -94,6 +95,8 @@ export default function PlaybookField({
   packageId?: string
   /** Bigger circles, for a field that fills a desktop page. */
   large?: boolean
+  /** Where this formation's line of scrimmage sits. */
+  lineOfScrimmage?: number
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
@@ -211,7 +214,7 @@ export default function PlaybookField({
         strokeRef.current = null
         setDraft(null)
         navigator.vibrate?.(15)
-        const snapped = snapToField(point, markerPoints())
+        const snapped = snapToField(point, markerPoints(), lineOfScrimmage)
         onFootballsChange?.([...footballs, { id: uid('football'), x: snapped.x, y: snapped.y }])
       }, holdDuration)
     }
@@ -337,7 +340,7 @@ export default function PlaybookField({
       >
         <div
           className={`absolute inset-x-0 h-px ${snap?.onLine ? 'bg-[#f7c948] shadow-[0_0_6px_#f7c948]' : 'bg-[#f6f2df]/70'}`}
-          style={{ top: `${LINE_OF_SCRIMMAGE}%` }}
+          style={{ top: `${lineOfScrimmage}%` }}
         />
         {snap?.alignedX !== undefined && (
           <div className="absolute inset-y-0 w-px bg-[#f7c948]/80" style={{ left: `${snap.alignedX}%` }} />
@@ -432,7 +435,8 @@ export default function PlaybookField({
                     x: drag.originX + (deltaX / (rect.width * view.scale)) * 100,
                     y: drag.originY + (deltaY / (rect.height * view.scale)) * 100
                   },
-                  markerPoints(drag.slotCode)
+                  markerPoints(drag.slotCode),
+                  lineOfScrimmage
                 )
                 setSnap(snapped)
                 onMovePosition(drag.slotCode, { x: snapped.x, y: snapped.y })
@@ -498,7 +502,8 @@ export default function PlaybookField({
                     x: drag.originX + (deltaX / (rect.width * view.scale)) * 100,
                     y: drag.originY + (deltaY / (rect.height * view.scale)) * 100
                   },
-                  markerPoints(drag.id)
+                  markerPoints(drag.id),
+                  lineOfScrimmage
                 )
                 setSnap(snapped)
                 onFootballsChange(

@@ -13,6 +13,7 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
+import { alignHorizontally, alignVertically, lineOf, moveGroup, moveLine, playersInBox, spaceEvenly } from '../lib/formation-edit'
 import {
   DEFAULT_POSITIONS,
   inferPositionType,
@@ -1093,6 +1094,55 @@ assert.equal(roundTripFailures, 0)
   )
   // With nothing placed yet, everyone takes their starting spot.
   assert.deepEqual(placeAll({}, eleven[0].positions), layoutPositions(eleven[0].positions))
+}
+
+// ---- Editing formations ----
+{
+  const spots = {
+    a: { x: 10, y: 52 },
+    b: { x: 30, y: 60 },
+    c: { x: 50, y: 70 },
+    d: { x: 92, y: 52 }
+  }
+
+  // A group moves together, and stops as a group at the field's edge.
+  assert.deepEqual(moveGroup({ a: spots.a, b: spots.b }, { x: 5, y: -2 }), { a: { x: 15, y: 50 }, b: { x: 35, y: 58 } })
+  const pushed = moveGroup({ a: spots.a, d: spots.d }, { x: 20, y: 0 })
+  assert.equal(pushed.d.x, 96)
+  assert.equal(pushed.d.x - pushed.a.x, 82)
+
+  // A box picks up the players inside it, whichever way it was dragged.
+  assert.deepEqual(playersInBox(spots, ['a', 'b', 'c', 'd'], { x: 40, y: 80 }, { x: 5, y: 50 }), ['a', 'b'])
+
+  // Aligning in a row uses the average depth, and lands on the line when it is close.
+  const row = alignHorizontally(spots, ['a', 'b', 'd'])
+  assert.deepEqual([row.a.y, row.b.y, row.d.y], [52, 52, 52])
+  assert.equal(row.c.y, 70)
+  const deepRow = alignHorizontally(spots, ['b', 'c'])
+  assert.deepEqual([deepRow.b.y, deepRow.c.y], [64, 64])
+  // Aligning in a column uses the average spot across; one player alone stays put.
+  const column = alignVertically(spots, ['a', 'b'])
+  assert.deepEqual([column.a.x, column.b.x], [20, 20])
+  assert.equal(alignVertically(spots, ['a']), spots)
+
+  // Spacing evenly keeps the ends and evens out the middle.
+  const spaced = spaceEvenly({ a: { x: 10, y: 52 }, b: { x: 20, y: 52 }, c: { x: 90, y: 52 } }, ['a', 'b', 'c'])
+  assert.deepEqual([spaced.a.x, spaced.b.x, spaced.c.x], [10, 50, 90])
+
+  // Moving the line takes the players on it along; everyone else stays.
+  const moved = moveLine(spots, 52, 40.4)
+  assert.equal(moved.line, 40)
+  assert.deepEqual([moved.spots.a.y, moved.spots.d.y, moved.spots.b.y], [40, 40, 60])
+  assert.equal(moveLine(spots, 52, 3).line, 15)
+
+  // Snapping pulls toward wherever the formation's line is.
+  assert.equal(snapToField({ x: 30, y: 37 }, [], 40).y, 40)
+  assert.equal(lineOf({}), LINE_OF_SCRIMMAGE)
+  assert.equal(lineOf({ lineOfScrimmage: 40 }), 40)
+
+  // Diagrams draw the formation's own line.
+  const lined = playDiagramSvg({ routes: [], footballs: [] }, { ...starterFormation(createPlaybook('t', 'L')), lineOfScrimmage: 40 })
+  assert.ok(lined.includes('y1="40"'))
 }
 
 console.log('logic tests passed')

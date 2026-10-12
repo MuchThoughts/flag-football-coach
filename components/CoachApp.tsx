@@ -175,6 +175,7 @@ function routePath(route: Route) {
 }
 
 export default function CoachApp() {
+  const [wide, setWide] = useState(false)
   const [team, setTeam] = useState(initialAppState.team)
   const [players, setPlayers] = useState(initialAppState.players)
   const [games, setGames] = useState(initialAppState.games)
@@ -913,7 +914,8 @@ export default function CoachApp() {
       />
       <UpdateBanner />
 
-      <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
+      {/* Drawing a play gets the whole width of the screen. */}
+      <div className={`mx-auto w-full ${wide ? 'max-w-none px-2 sm:px-3' : 'max-w-6xl px-3 sm:px-6'}`}>
         {route.section === 'roster' ? (
           <>
             <div className="pt-2">
@@ -991,6 +993,7 @@ export default function CoachApp() {
         ) : openPlaybook ? (
           <PlaybookPage
             key={openPlaybook.id}
+            onWideChange={setWide}
             playbook={openPlaybook}
             canDelete={playbooks.length > 1}
             teamName={team.name}
@@ -1486,6 +1489,7 @@ function FormationPlaysGroup({
 }
 
 function PlaybookPage({
+  onWideChange,
   playbook,
   canDelete,
   teamName,
@@ -1508,6 +1512,8 @@ function PlaybookPage({
   saveCallSheet,
   deleteCallSheet
 }: {
+  /** Asks the app to drop its page width limit, for the play editor. */
+  onWideChange: (wide: boolean) => void
   playbook: Playbook
   canDelete: boolean
   teamName: string
@@ -1539,6 +1545,11 @@ function PlaybookPage({
   const [exporting, setExporting] = useState(false)
   const [showCallSheets, setShowCallSheets] = useState(false)
   const [editingDetails, setEditingDetails] = useState(false)
+
+  useEffect(() => {
+    onWideChange(Boolean(editingPlay))
+    return () => onWideChange(false)
+  }, [editingPlay, onWideChange])
 
   const visiblePlays = filterPlays(plays, formations, filters)
   const baseFormation = formations.find((item) => item.id === playbook.baseFormationId)

@@ -183,8 +183,9 @@ export default function PlayEditorPage({
         )}
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
-        <div className="mx-auto w-full" style={{ maxWidth: 'max(320px, calc((100vh - 120px) * 2))' }}>
+      <div className="space-y-2">
+        {/* The field takes the whole width, as tall as the screen allows with its menu still in sight. */}
+        <div className="mx-auto w-full" style={{ maxWidth: 'max(320px, calc((100dvh - 140px) * 2))' }}>
           {formation ? (
             <PlayCanvas
               players={players}
@@ -204,125 +205,128 @@ export default function PlayEditorPage({
           )}
         </div>
 
-        <aside className="space-y-2 rounded-lg border border-[#d8ded5] bg-white p-2.5 lg:max-h-[calc(100vh-110px)] lg:overflow-y-auto">
-          <label className="block">
-            <span className="flex items-baseline justify-between gap-2">
-              <span className={label}>Name</span>
-              {nameEdited && call && (
+        <section className="grid gap-x-4 gap-y-2 rounded-lg border border-[#d8ded5] bg-white p-2.5 md:grid-cols-[minmax(240px,1fr)_minmax(0,2fr)]">
+          <div className="space-y-2">
+            <label className="block">
+              <span className="flex items-baseline justify-between gap-2">
+                <span className={label}>Name</span>
+                {nameEdited && call && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNameEdited(false)
+                      setName('')
+                    }}
+                    className="truncate text-[11px] font-black text-[#1f7a4d] hover:underline"
+                  >
+                    Use the call
+                  </button>
+                )}
+              </span>
+              <input
+                autoFocus={!play}
+                value={displayName}
+                onChange={(event) => {
+                  setName(event.target.value)
+                  setNameEdited(true)
+                }}
+                placeholder="Build the call below, or type a name"
+                aria-label="Play name"
+                className="mt-0.5 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm font-black outline-none focus:border-[#1f7a4d]"
+              />
+            </label>
+
+            <label className="flex items-center gap-2">
+              <span className={`${label} w-[4.6rem] shrink-0`}>Formation</span>
+              <select
+                value={formationId}
+                onChange={(event) => setFormationId(event.target.value)}
+                aria-label="Formation"
+                className="min-w-0 flex-1 rounded-lg border border-[#d8ded5] bg-white px-2 py-1 text-sm font-black outline-none focus:border-[#1f7a4d]"
+              >
+                {formations.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex items-center gap-2">
+              <span className={`${label} w-[4.6rem] shrink-0`}>Type</span>
+              <div className="grid flex-1 grid-cols-2 gap-1">
+                {PLAY_TYPES.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setType(option)}
+                    aria-pressed={type === option}
+                    className={`rounded-md border px-2 py-0.5 text-xs font-black capitalize ${
+                      type === option ? 'border-transparent text-white' : 'border-[#d8ded5] bg-white text-[#53665c]'
+                    }`}
+                    style={type === option ? { background: option === 'run' ? RUN_BLUE : '#10201a' } : undefined}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className={`${label} w-[4.6rem] shrink-0`}>Area</span>
+              <div className="grid flex-1 grid-cols-3 gap-1">
+                {PLAY_AREAS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setArea(option)}
+                    aria-pressed={area === option}
+                    className={`rounded-md border px-1 py-0.5 text-xs font-black capitalize ${
+                      area === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white text-[#53665c]'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <label className="block">
+              <span className={label}>Notes</span>
+              <textarea
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                rows={2}
+                placeholder="Reads, when to call it"
+                aria-label="Play notes"
+                className="mt-0.5 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm outline-none focus:border-[#1f7a4d]"
+              />
+            </label>
+
+            {(legacyRoutes.length > 0 || legacyFootballs.length > 0) && (
+              <p className="text-xs font-bold text-[#53665c]">
+                This play has lines from the old drawing tool, shown faded.{' '}
                 <button
                   type="button"
                   onClick={() => {
-                    setNameEdited(false)
-                    setName('')
+                    setLegacyRoutes([])
+                    setLegacyFootballs([])
                   }}
-                  className="truncate text-[11px] font-black text-[#1f7a4d] hover:underline"
+                  className="font-black text-[#c2412d] hover:underline"
                 >
-                  Use the call
+                  Remove them
                 </button>
-              )}
-            </span>
-            <input
-              autoFocus={!play}
-              value={displayName}
-              onChange={(event) => {
-                setName(event.target.value)
-                setNameEdited(true)
-              }}
-              placeholder="Build the call below, or type a name"
-              aria-label="Play name"
-              className="mt-0.5 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm font-black outline-none focus:border-[#1f7a4d]"
-            />
-          </label>
-
-          <label className="flex items-center gap-2">
-            <span className={`${label} w-[4.6rem] shrink-0`}>Formation</span>
-            <select
-              value={formationId}
-              onChange={(event) => setFormationId(event.target.value)}
-              aria-label="Formation"
-              className="min-w-0 flex-1 rounded-lg border border-[#d8ded5] bg-white px-2 py-1 text-sm font-black outline-none focus:border-[#1f7a4d]"
-            >
-              {formations.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex items-center gap-2">
-            <span className={`${label} w-[4.6rem] shrink-0`}>Type</span>
-            <div className="grid flex-1 grid-cols-2 gap-1">
-              {PLAY_TYPES.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setType(option)}
-                  aria-pressed={type === option}
-                  className={`rounded-md border px-2 py-0.5 text-xs font-black capitalize ${
-                    type === option ? 'border-transparent text-white' : 'border-[#d8ded5] bg-white text-[#53665c]'
-                  }`}
-                  style={type === option ? { background: option === 'run' ? RUN_BLUE : '#10201a' } : undefined}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
+              </p>
+            )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className={`${label} w-[4.6rem] shrink-0`}>Area</span>
-            <div className="grid flex-1 grid-cols-3 gap-1">
-              {PLAY_AREAS.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setArea(option)}
-                  aria-pressed={area === option}
-                  className={`rounded-md border px-1 py-0.5 text-xs font-black capitalize ${
-                    area === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white text-[#53665c]'
-                  }`}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-[#eef0ea] pt-1.5">
+          <div className="border-t border-[#eef0ea] pt-1.5 md:border-l md:border-t-0 md:pl-4 md:pt-0">
             <span className={label}>Call</span>
             <p className="mb-1 text-xs font-bold leading-tight text-[#53665c]">{call || 'Add components to build the call; it names the play.'}</p>
             <CallBuilder steps={steps} onChange={changeSteps} receivers={receivers} />
           </div>
 
-          <label className="block border-t border-[#eef0ea] pt-1.5">
-            <span className={label}>Notes</span>
-            <textarea
-              value={notes}
-              onChange={(event) => setNotes(event.target.value)}
-              rows={2}
-              placeholder="Reads, when to call it"
-              aria-label="Play notes"
-              className="mt-0.5 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm outline-none focus:border-[#1f7a4d]"
-            />
-          </label>
-
-          {(legacyRoutes.length > 0 || legacyFootballs.length > 0) && (
-            <p className="text-xs font-bold text-[#53665c]">
-              This play has lines from the old drawing tool, shown faded.{' '}
-              <button
-                type="button"
-                onClick={() => {
-                  setLegacyRoutes([])
-                  setLegacyFootballs([])
-                }}
-                className="font-black text-[#c2412d] hover:underline"
-              >
-                Remove them
-              </button>
-            </p>
-          )}
-        </aside>
+        </section>
       </div>
     </div>
   )

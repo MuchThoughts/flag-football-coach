@@ -59,7 +59,7 @@ export default function CallBuilder({
   return (
     <div className="space-y-1.5">
       {steps.length > 0 && (
-        <ol className="space-y-1">
+        <ol className="grid gap-1 xl:grid-cols-2">
           {steps.map((step, index) => {
             const component = findComponent(step.componentId)
             if (!component) return null
@@ -126,7 +126,7 @@ export default function CallBuilder({
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-1">
+      <div className="grid grid-cols-2 gap-1 sm:grid-cols-3 xl:grid-cols-4">
         {components
           .filter((component) => !component.needsReceiver)
           .map((component) => (

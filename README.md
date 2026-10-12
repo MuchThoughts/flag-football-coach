@@ -121,9 +121,9 @@ filters narrow it down. Click a formation's name to open the formation, its
 
 ## Drawing and naming plays
 
-**New Play**, or clicking a play, opens the play editor: the field with the
-formation's players fixed in place, and beside it the play's name, formation,
-pass or run, area, call and notes.
+**New Play**, or clicking a play, opens the play editor: the field, as big as
+the screen allows, with the formation's players fixed in place, and below it
+the play's name, formation, pass or run, area, notes and call.
 
 - **The call:** stack up components (Backfield, Quarterback, Receiver runs,
   Motion, Pass concepts, Single routes), with Fake, Left or Right and who

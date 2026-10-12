@@ -2057,7 +2057,6 @@ function PlaybookPage({
   const [filters, setFilters] = useState<PlayFilters>(emptyPlayFilters)
   const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
-  const [duplicatingFormation, setDuplicatingFormation] = useState<Formation | null>(null)
   const [openPlayId, setOpenPlayId] = useState<string | null>(null)
   const [actingOnPlayId, setActingOnPlayId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
@@ -2083,6 +2082,15 @@ function PlaybookPage({
             saveFormation(formation)
             if (makeBase) setBaseFormation(formation.id)
             else if (baseFormation?.id === formation.id) setBaseFormation(undefined)
+            setEditingFormation(null)
+          }}
+          takenNames={formations.map((item) => item.name)}
+          onDuplicate={(formation, makeBase, copy) => {
+            // The original is saved as it stands, then the copy goes right after it.
+            saveFormation(formation)
+            if (makeBase) setBaseFormation(formation.id)
+            else if (baseFormation?.id === formation.id) setBaseFormation(undefined)
+            saveFormation({ id: uid('formation'), ...copy }, formation.id)
             setEditingFormation(null)
           }}
           onDelete={
@@ -2267,46 +2275,30 @@ function PlaybookPage({
               No formations yet.
             </p>
           )}
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-4">
           {formations.map((formation) => (
-            <div key={formation.id} className="rounded-lg border border-[#d8ded5] bg-white p-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="flex items-center gap-1 truncate font-black">
-                    {formation.name}
-                    {formation.id === baseFormation?.id && (
-                      <Star size={11} className="shrink-0 fill-[#f7c948] text-[#b98a00]" aria-label="Base formation" />
-                    )}
-                  </p>
-                  <p className="truncate text-xs font-bold text-[#53665c]">
-                    {playbook.packages.find((item) => item.id === formation.packageId)?.name || playbook.packages[0].name} ·{' '}
-                    {countPlaysByFormation(plays, formation.id)} play
-                    {countPlaysByFormation(plays, formation.id) === 1 ? '' : 's'}
-                  </p>
-                </div>
-                <div className="flex shrink-0 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setDuplicatingFormation(formation)}
-                    aria-label={`Duplicate ${formation.name}`}
-                    title="Duplicate, and flip if you like"
-                    className="flex items-center rounded-md border border-[#d8ded5] px-1.5 py-1 text-[#53665c] hover:border-[#10201a] hover:text-[#10201a]"
-                  >
-                    <Copy size={13} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditingFormation(formation)}
-                    className="rounded-md border border-[#d8ded5] px-2 py-1 text-xs font-black hover:border-[#10201a]"
-                  >
-                    Edit
-                  </button>
-                </div>
-              </div>
-              <div className="mt-1.5">
-                <PlaybookField positions={formation.positions} packageId={formation.packageId} lineOfScrimmage={formation.lineOfScrimmage} compact />
-              </div>
-            </div>
+            <button
+              key={formation.id}
+              type="button"
+              onClick={() => setEditingFormation(formation)}
+              title={`Edit ${formation.name}`}
+              className="rounded-lg border border-[#d8ded5] bg-white p-1.5 text-left transition hover:border-[#10201a] hover:shadow-sm"
+            >
+              <span className="flex items-baseline justify-between gap-2 px-0.5">
+                <span className="flex min-w-0 items-center gap-1 truncate text-sm font-black">
+                  {formation.name}
+                  {formation.id === baseFormation?.id && (
+                    <Star size={11} className="shrink-0 fill-[#f7c948] text-[#b98a00]" aria-label="Base formation" />
+                  )}
+                </span>
+                <span className="shrink-0 truncate text-[11px] font-bold text-[#53665c]">
+                  {playbook.packages.find((item) => item.id === formation.packageId)?.name || playbook.packages[0].name}
+                </span>
+              </span>
+              <span className="mt-1 block">
+                <PlayDiagram play={{ routes: [], footballs: [] }} formation={formation} theme="turf" labels={false} />
+              </span>
+            </button>
           ))}
           </div>
         </section>
@@ -2383,18 +2375,6 @@ function PlaybookPage({
           onSave={saveCallSheet}
           onDelete={deleteCallSheet}
           onClose={() => setShowCallSheets(false)}
-        />
-      )}
-
-      {duplicatingFormation && (
-        <DuplicateFormationSheet
-          formation={duplicatingFormation}
-          takenNames={formations.map((formation) => formation.name)}
-          onCreate={(copy) => {
-            saveFormation({ id: uid('formation'), ...copy }, duplicatingFormation.id)
-            setDuplicatingFormation(null)
-          }}
-          onClose={() => setDuplicatingFormation(null)}
         />
       )}
 
@@ -2745,7 +2725,9 @@ function FormationEditorPage({
   baseFormation,
   playbookName,
   playCount,
+  takenNames,
   onSave,
+  onDuplicate,
   onDelete,
   onClose
 }: {
@@ -2754,7 +2736,10 @@ function FormationEditorPage({
   baseFormation?: Formation
   playbookName: string
   playCount: number
+  takenNames: string[]
   onSave: (formation: FormationDraft, makeBase: boolean) => void
+  /** Saves this formation as it stands, then adds the copy right after it. */
+  onDuplicate: (formation: FormationDraft, makeBase: boolean, copy: Omit<FormationDraft, 'id'>) => void
   onDelete?: () => void
   onClose: () => void
 }) {
@@ -2770,6 +2755,7 @@ function FormationEditorPage({
   const [selected, setSelected] = useState<string[]>([])
   const [makeBase, setMakeBase] = useState(Boolean(formation && baseFormation?.id === formation.id))
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
   const codes = players.map((player) => player.code)
   const chosen = selected.filter((code) => codes.includes(code))
 
@@ -2782,16 +2768,20 @@ function FormationEditorPage({
     setPositions((current) => ({ ...current, ...placeAll(current, next.positions) }))
   }
 
-  function save() {
-    // Only the package's own players are kept, so stale spots never pile up.
+  // A new formation keeps one id for the whole visit, so saving and duplicating agree.
+  const [draftId] = useState(() => formation?.id || uid('formation'))
+
+  /** The formation as it stands on screen. Only the package's own players are kept, so stale spots never pile up. */
+  function draft(): FormationDraft {
     const kept = players.reduce<SlotPositions>((next, player) => {
       next[player.code] = positions[player.code] || placeAll(positions, players)[player.code]
       return next
     }, {})
-    onSave(
-      { id: formation?.id || uid('formation'), name: name.trim() || 'Formation', packageId, positions: kept, lineOfScrimmage: line },
-      makeBase
-    )
+    return { id: draftId, name: name.trim() || 'Formation', packageId, positions: kept, lineOfScrimmage: line }
+  }
+
+  function save() {
+    onSave(draft(), makeBase)
   }
 
   const toolButton =
@@ -2811,6 +2801,16 @@ function FormationEditorPage({
         </button>
         <h1 className="font-display text-xl font-black">{formation ? 'Edit Formation' : 'New Formation'}</h1>
         <div className="ml-auto flex shrink-0 gap-1.5">
+          <button
+            type="button"
+            onClick={() => setDuplicating(true)}
+            title="Save this formation and make a copy, flipped if you like"
+            aria-label="Duplicate"
+            className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm font-black"
+          >
+            <Copy size={14} />
+            <span className="hidden sm:inline">Duplicate</span>
+          </button>
           <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm font-black">
             Cancel
           </button>
@@ -2978,6 +2978,18 @@ function FormationEditorPage({
           </button>
         </aside>
       </div>
+
+      {duplicating && (
+        <DuplicateFormationSheet
+          formation={{ ...draft(), teamId: '', playbookId: '', createdAt: '', updatedAt: '' }}
+          takenNames={[...takenNames.filter((item) => item !== formation?.name), name.trim() || 'Formation']}
+          onCreate={(copy) => {
+            setDuplicating(false)
+            onDuplicate(draft(), makeBase, copy)
+          }}
+          onClose={() => setDuplicating(false)}
+        />
+      )}
     </div>
   )
 }

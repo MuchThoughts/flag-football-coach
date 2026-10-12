@@ -66,7 +66,9 @@ export function playDiagramSvg(
   play: Pick<PlaybookPlay, 'routes' | 'footballs'>,
   formation: Formation | undefined,
   positions: PlaybookPosition[] = DEFAULT_POSITIONS,
-  theme: PlayDiagramTheme = 'paper'
+  theme: PlayDiagramTheme = 'paper',
+  /** Thumbnails leave the labels off; everything scales with the field either way. */
+  { labels = true }: { labels?: boolean } = {}
 ) {
   const colors = themes[theme]
   const parts: string[] = []
@@ -95,8 +97,8 @@ export function playDiagramSvg(
     const { x, y } = toWorld(spots[slot.code])
     const fontSize = slot.label.length > 2 ? 2.7 : slot.label.length > 1 ? 3.4 : 4.2
     parts.push(
-      `<circle cx="${x}" cy="${y}" r="4.4" fill="${colors.marker}" stroke="${colors.markerText}" stroke-width="0.8"/>` +
-        `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSize}" fill="${colors.markerText}">${escapeXml(slot.label)}</text>`
+      `<circle cx="${x}" cy="${y}" r="${labels ? 4.4 : 4}" fill="${colors.marker}" stroke="${colors.markerText}" stroke-width="0.8"/>` +
+        (labels ? `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSize}" fill="${colors.markerText}">${escapeXml(slot.label)}</text>` : '')
     )
   })
 

@@ -10,11 +10,13 @@ import type { Formation, PlaybookPlay, PlaybookPosition } from '@/lib/types'
 export function PlayDiagram({
   play,
   formation,
-  theme = 'paper'
+  theme = 'paper',
+  labels = true
 }: {
-  play: PlaybookPlay
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'>
   formation?: Formation
   theme?: PlayDiagramTheme
+  labels?: boolean
 }) {
   const positions = usePositions(formation?.packageId)
   return (
@@ -22,7 +24,7 @@ export function PlayDiagram({
       className="play-diagram w-full overflow-hidden rounded border border-[#d8ded5]"
       style={{ aspectRatio: '2 / 1' }}
       // The markup is built from numbers, with the position labels escaped.
-      dangerouslySetInnerHTML={{ __html: playDiagramSvg(play, formation, positions, theme) }}
+      dangerouslySetInnerHTML={{ __html: playDiagramSvg(play, formation, positions, theme, { labels }) }}
     />
   )
 }

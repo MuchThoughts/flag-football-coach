@@ -59,7 +59,7 @@ import {
 import { LINEUPS_PER_UNIT } from '@/lib/types'
 import PlaybookField from '@/components/PlaybookField'
 import { PlayDiagram, PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
-import { PackageEditorSheet, PackagesPanel } from '@/components/Packages'
+import { PackagesPanel } from '@/components/Packages'
 import { CallSheetsSheet } from '@/components/CallSheets'
 import PlaybookLibrary, { type PlaybookOverview } from '@/components/PlaybookLibrary'
 import { PackagesContext, usePackages, usePositions } from '@/components/PositionsContext'
@@ -685,14 +685,12 @@ export default function CoachApp() {
     )
   }
 
-  /** Adds a package or replaces the one with the same id. */
-  function savePackage(playbookId: string, draft: PersonnelPackage) {
+  /**
+   * Adds a package or replaces the one with the same id. Packages are edited as
+   * you type, so names are stored as typed; a space mid-word has to survive.
+   */
+  function savePackage(playbookId: string, cleaned: PersonnelPackage) {
     const now = new Date().toISOString()
-    const cleaned = {
-      ...draft,
-      name: draft.name.trim() || 'Package',
-      positions: draft.positions.map((position) => ({ ...position, label: position.label.trim() }))
-    }
     setPlaybooks((items) =>
       items.map((playbook) => {
         if (playbook.id !== playbookId) return playbook
@@ -706,15 +704,16 @@ export default function CoachApp() {
     )
   }
 
-  /** Formations in a deleted package line up in the playbook's first one instead. The last package stays. */
-  function deletePackage(playbookId: string, packageId: string) {
+  /** Formations in deleted packages line up in the first one left. At least one package always stays. */
+  function deletePackages(playbookId: string, packageIds: string[]) {
     const playbook = playbooks.find((item) => item.id === playbookId)
-    if (!playbook || playbook.packages.length <= 1) return
-    const remaining = playbook.packages.filter((item) => item.id !== packageId)
+    if (!playbook) return
+    const remaining = playbook.packages.filter((item) => !packageIds.includes(item.id))
+    if (remaining.length === 0) return
     setPlaybooks((items) => items.map((item) => (item.id === playbookId ? { ...item, packages: remaining } : item)))
     setFormations((items) =>
       items.map((formation) =>
-        formation.playbookId === playbookId && formation.packageId === packageId ? { ...formation, packageId: remaining[0].id } : formation
+        formation.playbookId === playbookId && packageIds.includes(formation.packageId) ? { ...formation, packageId: remaining[0].id } : formation
       )
     )
   }
@@ -981,7 +980,7 @@ export default function CoachApp() {
             onBack={() => navigate({ section: 'playbooks', playbookId: null })}
             renamePlaybook={(name) => renamePlaybook(openPlaybook.id, name)}
             savePackage={(draft) => savePackage(openPlaybook.id, draft)}
-            deletePackage={(packageId) => deletePackage(openPlaybook.id, packageId)}
+            deletePackages={(packageIds) => deletePackages(openPlaybook.id, packageIds)}
             deletePlaybook={() => deletePlaybook(openPlaybook.id)}
             savePlay={(draft) => savePlay(openPlaybook.id, draft)}
             deletePlay={deletePlay}
@@ -1537,8 +1536,9 @@ function PlayBuilderPage({
   const formation = formations.find((item) => item.id === formationId)
   // Anyone in the formation's package but the quarterback can get the ball or run a route.
   const receivers = usePositions(formation?.packageId)
+    .filter((position) => position.type !== 'QB')
     .map((position) => position.label.trim())
-    .filter((label) => label && !/^qb$/i.test(label))
+    .filter(Boolean)
   const call = playCallFromSteps(steps, formation?.name)
   const { type, area } = classifySteps(steps)
   // Anything the builder can say, whether it was written here or drawn earlier.
@@ -1987,7 +1987,7 @@ function PlaybookPage({
   onBack,
   renamePlaybook,
   savePackage,
-  deletePackage,
+  deletePackages,
   deletePlaybook,
   savePlay,
   deletePlay,
@@ -2007,7 +2007,7 @@ function PlaybookPage({
   onBack: () => void
   renamePlaybook: (name: string) => void
   savePackage: (draft: PersonnelPackage) => void
-  deletePackage: (packageId: string) => void
+  deletePackages: (packageIds: string[]) => void
   deletePlaybook: () => void
   savePlay: (play: PlayDraft) => void
   deletePlay: (playId: string) => void
@@ -2026,7 +2026,6 @@ function PlaybookPage({
   const [exporting, setExporting] = useState(false)
   const [showCallSheets, setShowCallSheets] = useState(false)
   const [editingDetails, setEditingDetails] = useState(false)
-  const [editingPackage, setEditingPackage] = useState<PersonnelPackage | null>(null)
 
   const visiblePlays = filterPlays(plays, formations, filters)
   const openPlay = plays.find((play) => play.id === openPlayId)
@@ -2202,8 +2201,9 @@ function PlaybookPage({
         <PackagesPanel
           packages={playbook.packages}
           formations={formations}
-          onEdit={setEditingPackage}
-          onAdd={() => setEditingPackage(createPackage(playbook, `Package ${playbook.packages.length + 1}`))}
+          onChange={savePackage}
+          onAdd={() => savePackage(createPackage(playbook, `Package ${playbook.packages.length + 1}`))}
+          onDelete={deletePackages}
         />
       ) : (
         <section className="space-y-3">
@@ -2328,24 +2328,6 @@ function PlaybookPage({
           onSave={saveCallSheet}
           onDelete={deleteCallSheet}
           onClose={() => setShowCallSheets(false)}
-        />
-      )}
-
-      {editingPackage && (
-        <PackageEditorSheet
-          draft={editingPackage}
-          isNew={!playbook.packages.some((item) => item.id === editingPackage.id)}
-          formationCount={formations.filter((formation) => formation.packageId === editingPackage.id).length}
-          canDelete={playbook.packages.length > 1}
-          onSave={(draft) => {
-            savePackage(draft)
-            setEditingPackage(null)
-          }}
-          onDelete={() => {
-            deletePackage(editingPackage.id)
-            setEditingPackage(null)
-          }}
-          onClose={() => setEditingPackage(null)}
         />
       )}
 

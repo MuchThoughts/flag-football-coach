@@ -1,51 +1,94 @@
 'use client'
 
-import { Minus, Plus, X } from 'lucide-react'
-import PlaybookField from '@/components/PlaybookField'
-import { PackagesContext } from '@/components/PositionsContext'
+import { Minus, Plus } from 'lucide-react'
 import {
-  layoutPositions,
   MAX_PLAYERS,
   MIN_PLAYERS,
   POSITION_LABEL_LENGTH,
-  positionLabelsValid,
+  POSITION_TYPES,
   suggestedPositions
 } from '@/lib/playbook'
-import type { PlaybookPosition } from '@/lib/types'
-
-/** The next number nobody is using yet, for a newly added player. */
-function nextLabel(positions: PlaybookPosition[]) {
-  const used = new Set(positions.map((position) => position.label.trim()))
-  let number = 1
-  while (used.has(String(number))) number += 1
-  return String(number)
-}
+import type { PlaybookPosition, PositionType } from '@/lib/types'
 
 /**
- * How many players a playbook has and what each circle says. When creating a
- * playbook the count sets up a fresh suggested lineup; once plays exist,
- * players are added or removed one at a time so nobody else moves.
+ * One package as a table: the player numbers are fixed, and each row has the
+ * kind of player and the name shown in their circle.
  */
-export default function PositionsEditor({
+export function PositionRows({
   positions,
-  onChange,
-  mode
+  onChange
 }: {
   positions: PlaybookPosition[]
   onChange: (positions: PlaybookPosition[]) => void
-  mode: 'create' | 'edit'
+}) {
+  const names = positions.map((position) => position.label.trim().toLowerCase())
+  const clash = (label: string) => !label.trim() || names.filter((item) => item === label.trim().toLowerCase()).length > 1
+
+  function update(code: string, patch: Partial<PlaybookPosition>) {
+    onChange(positions.map((position) => (position.code === code ? { ...position, ...patch } : position)))
+  }
+
+  return (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="whitespace-nowrap text-left text-[11px] font-black uppercase text-[#53665c]">
+          <th className="w-10 py-1.5 pl-3 font-black">#</th>
+          <th className="w-28 py-1.5 pr-2 font-black">Position Type</th>
+          <th className="py-1.5 pr-3 font-black">Position Name</th>
+        </tr>
+      </thead>
+      <tbody>
+        {positions.map((position, index) => (
+          <tr key={position.code} className="border-t border-[#eef0ea]">
+            <td className="py-1.5 pl-3 font-display text-base font-black text-[#53665c]">{index + 1}</td>
+            <td className="py-1.5 pr-2">
+              <select
+                value={position.type}
+                onChange={(event) => update(position.code, { type: event.target.value as PositionType })}
+                aria-label={`Position type for player ${index + 1}`}
+                className="w-full rounded-md border border-[#d8ded5] bg-white px-2 py-1.5 font-black outline-none focus:border-[#1f7a4d]"
+              >
+                {POSITION_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td className="py-1.5 pr-3">
+              <input
+                value={position.label}
+                maxLength={POSITION_LABEL_LENGTH}
+                onChange={(event) => update(position.code, { label: event.target.value })}
+                aria-label={`Position name for player ${index + 1}`}
+                className={`w-full rounded-md border px-2 py-1.5 font-black outline-none focus:border-[#1f7a4d] ${
+                  clash(position.label) ? 'border-[#c2412d] bg-[#fbeeeb]' : 'border-[#d8ded5]'
+                }`}
+              />
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+/**
+ * Setting up a new playbook: how many players are on the field, then what
+ * each one is. Changing the count starts over from a suggested lineup.
+ */
+export default function PositionsEditor({
+  positions,
+  onChange
+}: {
+  positions: PlaybookPosition[]
+  onChange: (positions: PlaybookPosition[]) => void
 }) {
   const count = positions.length
-  const labels = positions.map((position) => position.label.trim().toLowerCase())
-  const duplicate = (label: string) => label.trim() !== '' && labels.filter((item) => item === label.trim().toLowerCase()).length > 1
 
   function setCount(next: number) {
     if (next < MIN_PLAYERS || next > MAX_PLAYERS) return
-    if (mode === 'create') {
-      onChange(suggestedPositions(next))
-    } else if (next > count) {
-      onChange([...positions, { code: `pos-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`, label: nextLabel(positions) }])
-    }
+    onChange(suggestedPositions(next))
   }
 
   return (
@@ -54,81 +97,37 @@ export default function PositionsEditor({
         <div>
           <p className="text-sm font-black">Players on the field</p>
           <p className="text-xs font-bold text-[#53665c]">
-            {MIN_PLAYERS} to {MAX_PLAYERS}. Labels show in each circle.
+            {MIN_PLAYERS} to {MAX_PLAYERS}. Names show in each player&apos;s circle.
           </p>
         </div>
-        {mode === 'create' ? (
-          <div className="flex shrink-0 items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setCount(count - 1)}
-              disabled={count <= MIN_PLAYERS}
-              aria-label="Fewer players"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
-            >
-              <Minus size={16} />
-            </button>
-            <span className="w-8 text-center font-display text-xl font-black" aria-live="polite">
-              {count}
-            </span>
-            <button
-              type="button"
-              onClick={() => setCount(count + 1)}
-              disabled={count >= MAX_PLAYERS}
-              aria-label="More players"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
-            >
-              <Plus size={16} />
-            </button>
-          </div>
-        ) : (
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setCount(count - 1)}
+            disabled={count <= MIN_PLAYERS}
+            aria-label="Fewer players"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
+          >
+            <Minus size={16} />
+          </button>
+          <span className="w-8 text-center font-display text-xl font-black" aria-live="polite">
+            {count}
+          </span>
           <button
             type="button"
             onClick={() => setCount(count + 1)}
             disabled={count >= MAX_PLAYERS}
-            className="flex shrink-0 items-center gap-1 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black disabled:opacity-30"
+            aria-label="More players"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
           >
-            <Plus size={15} />
-            Add player
+            <Plus size={16} />
           </button>
-        )}
+        </div>
       </div>
 
-      <PackagesContext.Provider value={[{ id: 'preview', name: '', positions }]}>
-        <PlaybookField positions={layoutPositions(positions)} compact />
-      </PackagesContext.Provider>
-
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-        {positions.map((position, index) => (
-          <label key={position.code} className="relative block">
-            <span className="mb-1 block text-[11px] font-black uppercase text-[#53665c]">Player {index + 1}</span>
-            <input
-              value={position.label}
-              maxLength={POSITION_LABEL_LENGTH}
-              onChange={(event) =>
-                onChange(positions.map((item) => (item.code === position.code ? { ...item, label: event.target.value } : item)))
-              }
-              aria-label={`Label for player ${index + 1}`}
-              className={`w-full rounded-lg border px-2 py-2 text-center font-black outline-none focus:border-[#1f7a4d] ${
-                !position.label.trim() || duplicate(position.label) ? 'border-[#c2412d]' : 'border-[#d8ded5]'
-              }`}
-            />
-            {mode === 'edit' && count > MIN_PLAYERS && (
-              <button
-                type="button"
-                onClick={() => onChange(positions.filter((item) => item.code !== position.code))}
-                aria-label={`Remove ${position.label || `player ${index + 1}`}`}
-                className="absolute -right-1 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-[#10201a] text-white"
-              >
-                <X size={11} />
-              </button>
-            )}
-          </label>
-        ))}
+      <div className="overflow-hidden rounded-lg border border-[#d8ded5]">
+        <PositionRows positions={positions} onChange={onChange} />
       </div>
-      {!positionLabelsValid(positions) && (
-        <p className="text-xs font-bold text-[#c2412d]">Every player needs a label, and no two can match.</p>
-      )}
     </div>
   )
 }

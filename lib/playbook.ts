@@ -1,5 +1,5 @@
 import { LINE_OF_SCRIMMAGE, OFFENSE_SLOTS } from './positions'
-import type { Formation, PlayArea, PlaybookPlay, PlaybookPosition, PlayType, SlotPositions } from './types'
+import type { Formation, PlayArea, PlaybookPlay, PlaybookPosition, PlayType, PositionType, SlotPositions } from './types'
 
 export const PLAY_TYPES: PlayType[] = ['pass', 'run']
 export const PLAY_AREAS: PlayArea[] = ['deep', 'sidelines', 'middle']
@@ -7,12 +7,28 @@ export const PLAY_AREAS: PlayArea[] = ['deep', 'sidelines', 'middle']
 /** The original seven: QB, RB, C and receivers 1-4. Playbooks from before custom positions use these. */
 export const PLAYBOOK_SLOTS = OFFENSE_SLOTS
 
-export const DEFAULT_POSITIONS: PlaybookPosition[] = OFFENSE_SLOTS.map((slot) => ({ code: slot.code, label: slot.shortName }))
+export const POSITION_TYPES: PositionType[] = ['OL', 'QB', 'RB', 'TE', 'WR']
+
+/** A best guess at the kind of player from what the coach calls them. */
+export function inferPositionType(label: string): PositionType {
+  const name = label.trim().toUpperCase()
+  if (name === 'QB') return 'QB'
+  if (['RB', 'HB', 'FB', 'TB'].includes(name)) return 'RB'
+  if (name.startsWith('TE') || name === 'Y') return 'TE'
+  if (['C', 'G', 'T', 'OL', 'LT', 'LG', 'RG', 'RT'].includes(name)) return 'OL'
+  return 'WR'
+}
+
+export const DEFAULT_POSITIONS: PlaybookPosition[] = OFFENSE_SLOTS.map((slot) => ({
+  code: slot.code,
+  label: slot.shortName,
+  type: inferPositionType(slot.shortName)
+}))
 
 export const MIN_PLAYERS = 3
 export const MAX_PLAYERS = 11
 /** Long enough for QB, WR1 or X; short enough to fit in a circle. */
-export const POSITION_LABEL_LENGTH = 3
+export const POSITION_LABEL_LENGTH = 4
 
 export function defaultFormationPositions(): SlotPositions {
   return PLAYBOOK_SLOTS.reduce<SlotPositions>((positions, slot) => {
@@ -35,10 +51,13 @@ export function suggestedPositions(count: number): PlaybookPosition[] {
   const line = hasCenter
     ? [...receivers.slice(0, Math.ceil(receivers.length / 2)), 'C', ...receivers.slice(Math.ceil(receivers.length / 2))]
     : receivers
-  return [...line, ...backfield].map((label) => ({ code: label, label }))
+  return [...line, ...backfield].map((label) => ({ code: label, label, type: inferPositionType(label) }))
 }
 
-const backfieldLabel = /^(qb|rb|hb|fb|tb)$/i
+/** Quarterbacks and backs line up behind the line; everyone else is on it. */
+function inBackfield(position: PlaybookPosition) {
+  return position.type === 'QB' || position.type === 'RB'
+}
 
 function isDefaultSet(positions: PlaybookPosition[]) {
   return positions.length === DEFAULT_POSITIONS.length && DEFAULT_POSITIONS.every((slot) => positions.some((item) => item.code === slot.code))
@@ -51,15 +70,15 @@ function isDefaultSet(positions: PlaybookPosition[]) {
 export function layoutPositions(positions: PlaybookPosition[] = DEFAULT_POSITIONS): SlotPositions {
   if (isDefaultSet(positions)) return defaultFormationPositions()
 
-  const line = positions.filter((position) => !backfieldLabel.test(position.label.trim()))
-  const backs = positions.filter((position) => backfieldLabel.test(position.label.trim()))
+  const line = positions.filter((position) => !inBackfield(position))
+  const backs = positions.filter(inBackfield)
   const spots: SlotPositions = {}
 
   line.forEach((position, index) => {
     spots[position.code] = { x: line.length === 1 ? 50 : Math.round(8 + (index * 84) / (line.length - 1)), y: LINE_OF_SCRIMMAGE }
   })
   // The quarterback sits under center; any other backs fan out behind him.
-  const quarterback = backs.find((position) => /^qb$/i.test(position.label.trim()))
+  const quarterback = backs.find((position) => position.type === 'QB')
   const others = backs.filter((position) => position !== quarterback)
   if (quarterback) spots[quarterback.code] = { x: 50, y: 72 }
   others.forEach((position, index) => {
@@ -76,6 +95,13 @@ export function getFormationPosition(slotCode: string, formation?: Formation, po
 }
 
 /** Labels have to tell the circles apart, so blanks and repeats are not allowed. */
+/** Fills in a type for players saved before positions had one. */
+export function withPositionTypes(positions: PlaybookPosition[]): PlaybookPosition[] {
+  return positions.map((position) =>
+    POSITION_TYPES.includes(position.type) ? position : { ...position, type: inferPositionType(position.label || '') }
+  )
+}
+
 export function positionLabelsValid(positions: PlaybookPosition[]) {
   const labels = positions.map((position) => position.label.trim().toLowerCase())
   return labels.every(Boolean) && new Set(labels).size === labels.length

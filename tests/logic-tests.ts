@@ -13,7 +13,14 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
-import { DEFAULT_POSITIONS, layoutPositions, positionLabelsValid, suggestedPositions } from '../lib/playbook'
+import {
+  DEFAULT_POSITIONS,
+  inferPositionType,
+  layoutPositions,
+  positionLabelsValid,
+  suggestedPositions,
+  withPositionTypes
+} from '../lib/playbook'
 import {
   createCallSheet,
   createPlaybook,
@@ -59,7 +66,7 @@ import { compareLineups, previousDrive } from '../lib/substitutions'
 import { createDrive, initialAppState, samplePlayers } from '../lib/sample-data'
 import { computeSeasonUsage, getAttendanceSummary } from '../lib/season-analytics'
 import { normalizeAppStateForSupabase } from '../lib/supabase/app-state'
-import type { AppState, Playbook, PlaybookPlay, ResolvedDrive } from '../lib/types'
+import type { AppState, Playbook, PlaybookPlay, PlaybookPosition, ResolvedDrive } from '../lib/types'
 import { createLineup, createLineups, defaultLineupSlot, findLineup, lineupId, resolveDrive, resolveDrives } from '../lib/lineups'
 
 function assignedIds(assignments: Record<string, string | null>) {
@@ -930,12 +937,12 @@ assert.equal(roundTripFailures, 0)
 
   // The original seven keep their exact spots; anything else spreads along the line.
   assert.deepEqual(layoutPositions(DEFAULT_POSITIONS), defaultFormationPositions())
-  const five = [
-    { code: 'x', label: 'X' },
-    { code: 'c', label: 'C' },
-    { code: 'z', label: 'Z' },
-    { code: 'q', label: 'QB' },
-    { code: 'h', label: 'HB' }
+  const five: PlaybookPosition[] = [
+    { code: 'x', label: 'X', type: 'WR' },
+    { code: 'c', label: 'C', type: 'OL' },
+    { code: 'z', label: 'Z', type: 'WR' },
+    { code: 'q', label: 'QB', type: 'QB' },
+    { code: 'h', label: 'HB', type: 'RB' }
   ]
   const spots = layoutPositions(five)
   assert.deepEqual(spots.x, { x: 8, y: LINE_OF_SCRIMMAGE })
@@ -946,8 +953,8 @@ assert.equal(roundTripFailures, 0)
   assert.deepEqual(getFormationPosition('z', undefined, five), { x: 92, y: LINE_OF_SCRIMMAGE })
 
   assert.equal(positionLabelsValid(five), true)
-  assert.equal(positionLabelsValid([...five, { code: 'dup', label: 'x ' }]), false)
-  assert.equal(positionLabelsValid([...five, { code: 'blank', label: '  ' }]), false)
+  assert.equal(positionLabelsValid([...five, { code: 'dup', label: 'x ', type: 'WR' }]), false)
+  assert.equal(positionLabelsValid([...five, { code: 'blank', label: '  ', type: 'WR' }]), false)
 
   // A new playbook keeps its players and gets one formation laid out for them.
   const flag5 = createPlaybook('t', 'Five on Five', five, 'playbook-five')
@@ -959,7 +966,7 @@ assert.equal(roundTripFailures, 0)
   assert.deepEqual(Object.keys(base.positions).sort(), ['c', 'h', 'q', 'x', 'z'])
 
   // Diagrams draw the playbook's own players, with labels made safe for markup.
-  const fiveSvg = playDiagramSvg({ routes: [], footballs: [] }, base, [...five.slice(0, 4), { code: 'h', label: '<b>' }])
+  const fiveSvg = playDiagramSvg({ routes: [], footballs: [] }, base, [...five.slice(0, 4), { code: 'h', label: '<b>', type: 'RB' }])
   assert.equal((fiveSvg.match(/<circle /g) || []).length, 5)
   assert.ok(fiveSvg.includes('&lt;b&gt;'))
   assert.ok(!fiveSvg.includes('<b>'))
@@ -1008,6 +1015,41 @@ assert.equal(roundTripFailures, 0)
   // A fresh app's seeded formations belong to the main playbook.
   assert.ok(migrateAppState(initialAppState).formations.every((item) => item.playbookId === MAIN_PLAYBOOK_ID))
   assert.ok(migrateAppState(initialAppState).formations.every((item) => item.packageId === BASE_PACKAGE_ID))
+}
+
+// ---- Position types ----
+{
+  // The original seven get types from their names.
+  assert.deepEqual(
+    DEFAULT_POSITIONS.map((item) => `${item.label}:${item.type}`),
+    ['1:WR', '2:WR', 'C:OL', '3:WR', '4:WR', 'QB:QB', 'RB:RB']
+  )
+  assert.equal(inferPositionType(' hb '), 'RB')
+  assert.equal(inferPositionType('TE2'), 'TE')
+  assert.equal(inferPositionType('LT'), 'OL')
+  assert.equal(inferPositionType('Slot'), 'WR')
+
+  // Players saved without a type get one; ones with a type keep it.
+  const untyped = [{ code: 'a', label: 'QB' }, { code: 'b', label: 'Y', type: 'WR' }] as unknown as PlaybookPosition[]
+  assert.deepEqual(withPositionTypes(untyped).map((item) => item.type), ['QB', 'WR'])
+
+  // Layout goes by type, whatever the name: a back called "Joker" still lines up behind the line.
+  const named: PlaybookPosition[] = [
+    { code: 'a', label: 'X', type: 'WR' },
+    { code: 'b', label: 'Ctr', type: 'OL' },
+    { code: 'c', label: 'Z', type: 'WR' },
+    { code: 'd', label: 'Sig', type: 'QB' },
+    { code: 'e', label: 'Jkr', type: 'RB' }
+  ]
+  const namedSpots = layoutPositions(named)
+  assert.deepEqual(namedSpots.d, { x: 50, y: 72 })
+  assert.equal(namedSpots.e.y, 84)
+  assert.equal(namedSpots.b.y, LINE_OF_SCRIMMAGE)
+
+  // Packages saved before types existed come back typed.
+  const oldPackage = { id: 'pkg', name: 'Old', positions: [{ code: 'q', label: 'QB' }, { code: 'w', label: 'W' }] }
+  const typedBook = ensurePlaybooks('t', [{ ...createPlaybook('t', 'Old', DEFAULT_POSITIONS, 'pb-old'), packages: [oldPackage] } as unknown as Playbook], [], [], '')
+  assert.deepEqual(typedBook.playbooks[0].packages[0].positions.map((item) => item.type), ['QB', 'WR'])
 }
 
 console.log('logic tests passed')

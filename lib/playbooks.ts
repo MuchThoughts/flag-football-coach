@@ -1,4 +1,4 @@
-import { DEFAULT_POSITIONS, layoutPositions } from './playbook'
+import { DEFAULT_POSITIONS, layoutPositions, withPositionTypes } from './playbook'
 import type { CallSheet, CallSheetSection, Formation, PersonnelPackage, Playbook, PlaybookPlay, PlaybookPosition } from './types'
 
 /** Plays written before there were several playbooks all land in this one. */
@@ -13,7 +13,7 @@ function uid(prefix: string) {
 export const BASE_PACKAGE_ID = 'package-base'
 
 function cleanPositions(positions: PlaybookPosition[]) {
-  return positions.map((position) => ({ code: position.code, label: position.label.trim() }))
+  return withPositionTypes(positions).map((position) => ({ code: position.code, label: position.label.trim(), type: position.type }))
 }
 
 export function createPlaybook(
@@ -127,14 +127,14 @@ function normalizePackages(playbook: Playbook): Playbook {
   const legacy = playbook as LegacyPlaybook
   const packages = (Array.isArray(playbook.packages) ? playbook.packages : [])
     .filter((item) => item && item.id)
-    .map((item) => ({ ...item, name: item.name || 'Package', positions: validPositions(item.positions) ? item.positions : DEFAULT_POSITIONS }))
+    .map((item) => ({ ...item, name: item.name || 'Package', positions: validPositions(item.positions) ? withPositionTypes(item.positions) : DEFAULT_POSITIONS }))
   const { positions, ...rest } = legacy
   return {
     ...rest,
     packages:
       packages.length > 0
         ? packages
-        : [{ id: BASE_PACKAGE_ID, name: 'Base', positions: validPositions(positions) ? positions! : DEFAULT_POSITIONS }]
+        : [{ id: BASE_PACKAGE_ID, name: 'Base', positions: validPositions(positions) ? withPositionTypes(positions!) : DEFAULT_POSITIONS }]
   }
 }
 

@@ -1,188 +1,139 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2, Users, X } from 'lucide-react'
-import PlaybookField from '@/components/PlaybookField'
-import PositionsEditor from '@/components/PositionsEditor'
-import { layoutPositions, positionLabelsValid } from '@/lib/playbook'
+import { Plus, Trash2 } from 'lucide-react'
+import { PositionRows } from '@/components/PositionsEditor'
+import { positionLabelsValid } from '@/lib/playbook'
 import type { Formation, PersonnelPackage } from '@/lib/types'
 
 /**
- * The Packages tab: every personnel package in the playbook, who it puts on
- * the field, and which formations line up in it.
+ * The Packages tab: every personnel package as a table, edited in place.
+ * Deleting is a mode: pick the packages, then confirm.
  */
 export function PackagesPanel({
   packages,
   formations,
-  onEdit,
-  onAdd
+  onChange,
+  onAdd,
+  onDelete
 }: {
   packages: PersonnelPackage[]
   formations: Formation[]
-  onEdit: (item: PersonnelPackage) => void
+  onChange: (item: PersonnelPackage) => void
   onAdd: () => void
+  onDelete: (packageIds: string[]) => void
 }) {
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
+  // At least one package has to stay for formations to line up in.
+  const deletingAll = selected.length >= packages.length
+  const movedFormations = formations.filter((formation) => selected.includes(formation.packageId)).length
+
+  function stopSelecting() {
+    setSelecting(false)
+    setSelected([])
+  }
+
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-bold text-[#53665c]">Who takes the field, and what each player is called.</p>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white"
-        >
-          <Plus size={16} />
-          New Package
-        </button>
-      </div>
+      {selecting ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#c2412d] bg-[#fbeeeb] px-3 py-2">
+          <p className="text-sm font-bold">
+            {selected.length === 0
+              ? 'Select the packages to delete.'
+              : deletingAll
+                ? 'Keep at least one package.'
+                : `${selected.length} selected.${
+                    movedFormations > 0
+                      ? ` ${movedFormations} formation${movedFormations === 1 ? '' : 's'} will move to the first remaining package.`
+                      : ''
+                  }`}
+          </p>
+          <div className="flex shrink-0 gap-2">
+            <button type="button" onClick={stopSelecting} className="rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={selected.length === 0 || deletingAll}
+              onClick={() => {
+                onDelete(selected)
+                stopSelecting()
+              }}
+              className="flex items-center gap-1.5 rounded-lg bg-[#c2412d] px-3 py-2 text-sm font-black text-white disabled:opacity-40"
+            >
+              <Trash2 size={15} />
+              Delete{selected.length > 0 ? ` ${selected.length}` : ''}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm font-bold text-[#53665c]">Who takes the field in each package. Changes save as you type.</p>
+          <div className="flex shrink-0 gap-2">
+            <button
+              type="button"
+              onClick={onAdd}
+              className="flex items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white"
+            >
+              <Plus size={16} />
+              New Package
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelecting(true)}
+              disabled={packages.length <= 1}
+              className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black text-[#c2412d] disabled:opacity-40"
+            >
+              <Trash2 size={15} />
+              Delete Packages
+            </button>
+          </div>
+        </div>
+      )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {packages.map((item, index) => {
-          const used = formations.filter((formation) => formation.packageId === item.id)
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {packages.map((item) => {
+          const used = formations.filter((formation) => formation.packageId === item.id).length
+          const checked = selected.includes(item.id)
           return (
-            <div key={item.id} className="flex min-w-0 flex-col rounded-lg border border-[#d8ded5] bg-white p-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="flex items-center gap-2 truncate font-black">
-                    <Users size={15} className="shrink-0 text-[#53665c]" />
-                    {item.name}
-                    {index === 0 && (
-                      <span className="rounded-full bg-[#f7f5ee] px-2 py-0.5 text-[10px] font-black uppercase text-[#53665c]">Default</span>
-                    )}
-                  </p>
-                  <p className="text-xs font-bold text-[#53665c]">
-                    {item.positions.length} players · {used.length} formation{used.length === 1 ? '' : 's'}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onEdit(item)}
-                  className="shrink-0 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black hover:border-[#10201a]"
-                >
-                  Edit
-                </button>
+            <div
+              key={item.id}
+              className={`min-w-0 overflow-hidden rounded-lg border bg-white ${
+                checked ? 'border-[#c2412d] ring-2 ring-[#c2412d]/30' : 'border-[#d8ded5]'
+              }`}
+            >
+              <div className="flex items-center gap-2 border-b border-[#d8ded5] bg-[#10201a] px-3 py-2">
+                {selecting && (
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => setSelected((current) => (checked ? current.filter((id) => id !== item.id) : [...current, item.id]))}
+                    aria-label={`Select ${item.name || 'package'} to delete`}
+                    className="h-4 w-4 shrink-0 accent-[#c2412d]"
+                  />
+                )}
+                <input
+                  value={item.name}
+                  onChange={(event) => onChange({ ...item, name: event.target.value })}
+                  placeholder="Package name"
+                  aria-label="Package name"
+                  className="min-w-0 flex-1 rounded bg-transparent px-1 py-0.5 font-display text-lg font-black text-white outline-none placeholder:text-white/40 focus:bg-white/10"
+                />
+                <span className="shrink-0 text-xs font-bold text-white/70">
+                  {used} formation{used === 1 ? '' : 's'}
+                </span>
               </div>
-
-              <div className="mt-2">
-                <PlaybookField positions={layoutPositions(item.positions)} packageId={item.id} compact />
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-1">
-                {item.positions.map((position) => (
-                  <span
-                    key={position.code}
-                    className="flex h-7 min-w-7 items-center justify-center rounded-full border-2 border-[#10201a] px-1 text-[11px] font-black"
-                  >
-                    {position.label}
-                  </span>
-                ))}
-              </div>
-
-              <p className="mt-2 truncate text-xs font-bold text-[#53665c]">
-                {used.length > 0 ? `Used by ${used.map((formation) => formation.name).join(', ')}` : 'No formations use it yet.'}
-              </p>
+              <PositionRows positions={item.positions} onChange={(positions) => onChange({ ...item, positions })} />
+              {!positionLabelsValid(item.positions) && (
+                <p className="border-t border-[#eef0ea] px-3 py-2 text-xs font-bold text-[#c2412d]">
+                  Every position needs a name, and no two can match.
+                </p>
+              )}
             </div>
           )
         })}
       </div>
     </section>
-  )
-}
-
-/** Name a package and set who is in it. */
-export function PackageEditorSheet({
-  draft,
-  isNew,
-  formationCount,
-  canDelete,
-  onSave,
-  onDelete,
-  onClose
-}: {
-  draft: PersonnelPackage
-  isNew: boolean
-  formationCount: number
-  canDelete: boolean
-  onSave: (item: PersonnelPackage) => void
-  onDelete: () => void
-  onClose: () => void
-}) {
-  const [name, setName] = useState(draft.name)
-  const [positions, setPositions] = useState(draft.positions)
-  const [confirming, setConfirming] = useState(false)
-  const ready = name.trim() !== '' && positionLabelsValid(positions)
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <form
-        className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom"
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (ready) onSave({ ...draft, name, positions })
-        }}
-      >
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-display text-xl font-black">{isNew ? 'New Package' : 'Edit Package'}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <label className="mt-4 block">
-          <span className="text-xs font-black uppercase text-[#53665c]">Package name</span>
-          <input
-            autoFocus={isNew}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="e.g. Base, Heavy, Empty, 2 TE"
-            aria-label="Package name"
-            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
-          />
-        </label>
-
-        <div className="mt-4 border-t border-[#eef0ea] pt-4">
-          <PositionsEditor positions={positions} onChange={setPositions} mode="edit" />
-        </div>
-
-        <button type="submit" disabled={!ready} className="mt-4 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40">
-          {isNew ? 'Create Package' : 'Save Package'}
-        </button>
-
-        {!isNew &&
-          canDelete &&
-          (confirming ? (
-            <div className="mt-3 rounded-lg border border-[#c2412d] p-3">
-              <p className="text-sm font-bold">
-                Delete {draft.name}?{' '}
-                {formationCount > 0
-                  ? `Its ${formationCount} formation${formationCount === 1 ? '' : 's'} will use the first package instead.`
-                  : 'No formations use it.'}
-              </p>
-              <div className="mt-3 grid grid-cols-2 gap-2">
-                <button type="button" onClick={() => setConfirming(false)} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
-                  Cancel
-                </button>
-                <button type="button" onClick={onDelete} className="rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setConfirming(true)}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-black text-[#c2412d] hover:bg-[#fbeeeb]"
-            >
-              <Trash2 size={15} />
-              Delete Package
-            </button>
-          ))}
-      </form>
-    </div>
   )
 }

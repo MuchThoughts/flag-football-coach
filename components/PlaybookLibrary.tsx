@@ -108,7 +108,7 @@ export default function PlaybookLibrary({
               className="mt-4 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
             />
             <div className="mt-4 border-t border-[#eef0ea] pt-4">
-              <PositionsEditor positions={positions} onChange={setPositions} mode="create" />
+              <PositionsEditor positions={positions} onChange={setPositions} />
             </div>
             <button
               type="submit"

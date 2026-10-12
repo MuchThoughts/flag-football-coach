@@ -177,11 +177,16 @@ export interface PlayStep {
   fake?: boolean
 }
 
+export type PositionType = 'OL' | 'QB' | 'RB' | 'TE' | 'WR'
+
 /** One player a playbook draws on the field, with the label shown in their circle. */
 export interface PlaybookPosition {
   /** Stable key that formations place; the label can change without moving anyone. */
   code: string
+  /** The position's name, free text, shown in the player's circle. */
   label: string
+  /** What kind of player this is, whatever the coach calls them. */
+  type: PositionType
 }
 
 /**

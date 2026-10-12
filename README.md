@@ -75,11 +75,13 @@ in **Main Playbook**, with the original seven players.
 
 ### Personnel packages and formations
 
-The **Packages** tab, next to **Formations**, holds the playbook's personnel
-packages: named groups of players, like Base, Heavy or Empty, each with its own
-labels (an RB in Base can be a TE in Heavy). Each card shows the package's
-players and which formations use it. A new package starts as a copy of the
-first, and packages can add or remove players.
+The **Packages** tab, next to **Formations**, shows every personnel package as
+a table, edited right there and saved as you type. Each numbered player has a
+**Position Type** (OL, QB, RB, TE or WR) and a free-text **Position Name**, the
+label in their circle (up to 4 characters). So an RB in Base can be a TE named
+Y in Heavy. **New Package** adds a table copied from the first package;
+**Delete Packages** lets you tick the ones to remove, then confirm. Formations
+in a deleted package move to the first one left.
 
 **New Formation** opens a full page with every player in the chosen package
 already on the field, ready to drag into place. Switching a formation to

@@ -17,6 +17,7 @@ import {
   DEFAULT_POSITIONS,
   inferPositionType,
   layoutPositions,
+  placeAll,
   positionLabelsValid,
   suggestedPositions,
   withPositionTypes
@@ -31,7 +32,9 @@ import {
   BASE_PACKAGE_ID,
   createPackage,
   packageFor,
+  playerCount,
   removePlaysFromCallSheets,
+  resizePackages,
   starterFormation
 } from '../lib/playbooks'
 import {
@@ -1050,6 +1053,46 @@ assert.equal(roundTripFailures, 0)
   const oldPackage = { id: 'pkg', name: 'Old', positions: [{ code: 'q', label: 'QB' }, { code: 'w', label: 'W' }] }
   const typedBook = ensurePlaybooks('t', [{ ...createPlaybook('t', 'Old', DEFAULT_POSITIONS, 'pb-old'), packages: [oldPackage] } as unknown as Playbook], [], [], '')
   assert.deepEqual(typedBook.playbooks[0].packages[0].positions.map((item) => item.type), ['QB', 'WR'])
+}
+
+// ---- Changing how many players a playbook has ----
+{
+  const seven = createPlaybook('t', 'Seven', DEFAULT_POSITIONS, 'pb-seven')
+  const heavy = { ...createPackage(seven, 'Heavy'), id: 'pkg-heavy' }
+  const packages = [...seven.packages, heavy]
+
+  // Growing to 11 adds the same four players to every package, numbered after the ones in use.
+  const eleven = resizePackages(packages, 11)
+  assert.deepEqual(eleven.map((item) => item.positions.length), [11, 11])
+  const addedCodes = eleven[0].positions.slice(7).map((item) => item.code)
+  assert.deepEqual(eleven[1].positions.slice(7).map((item) => item.code), addedCodes)
+  assert.equal(new Set(addedCodes).size, 4)
+  assert.ok(addedCodes.every((code) => !DEFAULT_POSITIONS.some((item) => item.code === code)))
+  assert.deepEqual(eleven[0].positions.slice(7).map((item) => `${item.label}:${item.type}`), ['5:WR', '6:WR', '7:WR', '8:WR'])
+  assert.equal(playerCount({ ...seven, packages: eleven }), 11)
+
+  // Existing players are untouched, and shrinking takes players off the end.
+  assert.deepEqual(eleven[0].positions.slice(0, 7), DEFAULT_POSITIONS)
+  assert.deepEqual(resizePackages(eleven, 7)[0].positions, DEFAULT_POSITIONS)
+  // The count stays within the limits.
+  assert.equal(resizePackages(packages, 40)[0].positions.length, 11)
+  assert.equal(resizePackages(packages, 0)[0].positions.length, 3)
+
+  // A formation saved with seven keeps their spots. The four new players take
+  // their usual spot where it is free and the open row at the bottom where it
+  // is not, so nobody hides under anybody.
+  const spots = placeAll(defaultFormationPositions(), eleven[0].positions)
+  DEFAULT_POSITIONS.forEach((item) => assert.deepEqual(spots[item.code], defaultFormationPositions()[item.code]))
+  assert.ok(addedCodes.some((code) => spots[code].y === 94))
+  assert.ok(addedCodes.every((code) => spots[code]))
+  const all = Object.values(spots)
+  all.forEach((a, i) =>
+    all.forEach((b, j) => {
+      if (i < j) assert.ok(Math.hypot(a.x - b.x, a.y - b.y) >= 6, `players ${i} and ${j} overlap`)
+    })
+  )
+  // With nothing placed yet, everyone takes their starting spot.
+  assert.deepEqual(placeAll({}, eleven[0].positions), layoutPositions(eleven[0].positions))
 }
 
 console.log('logic tests passed')

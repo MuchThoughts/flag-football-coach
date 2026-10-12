@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minus, Plus, X } from 'lucide-react'
 import { usePositions } from '@/components/PositionsContext'
-import { layoutPositions } from '@/lib/playbook'
+import { placeAll } from '@/lib/playbook'
 import { LINE_OF_SCRIMMAGE } from '@/lib/positions'
 import { snapToField, type SnapResult } from '@/lib/snapping'
 import type { FieldPoint, PlayFootball, PlayRoute, SlotPositions } from '@/lib/types'
@@ -113,7 +113,7 @@ export default function PlaybookField({
   const lastTapRef = useRef<{ routeId: string; at: number } | null>(null)
 
   const slots = usePositions(packageId)
-  const startingSpots = layoutPositions(slots)
+  const spots = placeAll(positions, slots)
   const drawable = Boolean(onRoutesChange)
   const fullscreen = fullscreenOnLandscape && landscape && !fullscreenOff
 
@@ -121,7 +121,7 @@ export default function PlaybookField({
   function markerPoints(exclude?: string): FieldPoint[] {
     return [
       ...slots.filter((slot) => slot.code !== exclude).map(
-        (slot) => positions[slot.code] || startingSpots[slot.code] || { x: 50, y: 50 }
+        (slot) => spots[slot.code]
       ),
       ...footballs.filter((football) => football.id !== exclude).map((football) => ({ x: football.x, y: football.y }))
     ]
@@ -392,7 +392,7 @@ export default function PlaybookField({
         </svg>
 
         {slots.map((slot) => {
-          const position = positions[slot.code] || startingSpots[slot.code] || { x: 50, y: 50 }
+          const position = spots[slot.code]
           const isDragging = draggingSlot === slot.code
           return (
             <div

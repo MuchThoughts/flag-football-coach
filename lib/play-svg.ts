@@ -1,4 +1,4 @@
-import { DEFAULT_POSITIONS, getFormationPosition } from './playbook'
+import { DEFAULT_POSITIONS, placeAll } from './playbook'
 import { LINE_OF_SCRIMMAGE } from './positions'
 import type { Formation, PlaybookPlay, PlaybookPosition } from './types'
 
@@ -89,8 +89,9 @@ export function playDiagramSvg(
     parts.push(arrowHead(points, colors.route))
   })
 
+  const spots = placeAll(formation?.positions || {}, positions)
   positions.forEach((slot) => {
-    const { x, y } = toWorld(getFormationPosition(slot.code, formation, positions))
+    const { x, y } = toWorld(spots[slot.code])
     const fontSize = slot.label.length > 2 ? 2.7 : slot.label.length > 1 ? 3.4 : 4.2
     parts.push(
       `<circle cx="${x}" cy="${y}" r="4.4" fill="${colors.marker}" stroke="${colors.markerText}" stroke-width="0.8"/>` +

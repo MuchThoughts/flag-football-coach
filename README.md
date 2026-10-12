@@ -83,6 +83,13 @@ Y in Heavy. **New Package** adds a table copied from the first package;
 **Delete Packages** lets you tick the ones to remove, then confirm. Formations
 in a deleted package move to the first one left.
 
+**Players on the field**, at the top of the tab, changes how many players every
+package in the playbook has (3 to 11). Added players get the next free number
+as their name and WR as their type. In formations saved before, they take
+their usual spot when it is free and otherwise wait in a row at the bottom of
+the field, ready to drag in. Removing a player asks first, and takes the last
+row off every package.
+
 **New Formation** opens a full page with every player in the chosen package
 already on the field, ready to drag into place. Switching a formation to
 another package keeps everyone's spot and only changes the labels.

@@ -39,6 +39,7 @@ import { migrateAppState } from '@/lib/migrate-state'
 import {
   countPlaysByFormation,
   layoutPositions,
+  placeAll,
   emptyPlayFilters,
   filterPlays,
   PLAY_AREAS,
@@ -65,7 +66,15 @@ import PlaybookLibrary, { type PlaybookOverview } from '@/components/PlaybookLib
 import { PackagesContext, usePackages, usePositions } from '@/components/PositionsContext'
 import UpdateBanner from '@/components/UpdateBanner'
 import TopToolbar, { type Section, type SyncStatus } from '@/components/TopToolbar'
-import { createCallSheet, createPackage, createPlaybook, removePlaysFromCallSheets, starterFormation } from '@/lib/playbooks'
+import {
+  createCallSheet,
+  createPackage,
+  createPlaybook,
+  playerCount,
+  removePlaysFromCallSheets,
+  resizePackages,
+  starterFormation
+} from '@/lib/playbooks'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
 import { getSlotPosition, LINE_OF_SCRIMMAGE, slotPositionKey, SLOTS_BY_UNIT, type FieldSlot } from '@/lib/positions'
 import { snapToField, type SnapResult } from '@/lib/snapping'
@@ -704,6 +713,14 @@ export default function CoachApp() {
     )
   }
 
+  /** Grows or shrinks every package in a playbook to the same number of players. */
+  function setPlayerCount(playbookId: string, count: number) {
+    const now = new Date().toISOString()
+    setPlaybooks((items) =>
+      items.map((playbook) => (playbook.id === playbookId ? { ...playbook, packages: resizePackages(playbook.packages, count), updatedAt: now } : playbook))
+    )
+  }
+
   /** Formations in deleted packages line up in the first one left. At least one package always stays. */
   function deletePackages(playbookId: string, packageIds: string[]) {
     const playbook = playbooks.find((item) => item.id === playbookId)
@@ -981,6 +998,7 @@ export default function CoachApp() {
             renamePlaybook={(name) => renamePlaybook(openPlaybook.id, name)}
             savePackage={(draft) => savePackage(openPlaybook.id, draft)}
             deletePackages={(packageIds) => deletePackages(openPlaybook.id, packageIds)}
+            setPlayerCount={(count) => setPlayerCount(openPlaybook.id, count)}
             deletePlaybook={() => deletePlaybook(openPlaybook.id)}
             savePlay={(draft) => savePlay(openPlaybook.id, draft)}
             deletePlay={deletePlay}
@@ -1988,6 +2006,7 @@ function PlaybookPage({
   renamePlaybook,
   savePackage,
   deletePackages,
+  setPlayerCount,
   deletePlaybook,
   savePlay,
   deletePlay,
@@ -2008,6 +2027,7 @@ function PlaybookPage({
   renamePlaybook: (name: string) => void
   savePackage: (draft: PersonnelPackage) => void
   deletePackages: (packageIds: string[]) => void
+  setPlayerCount: (count: number) => void
   deletePlaybook: () => void
   savePlay: (play: PlayDraft) => void
   deletePlay: (playId: string) => void
@@ -2204,6 +2224,8 @@ function PlaybookPage({
           onChange={savePackage}
           onAdd={() => savePackage(createPackage(playbook, `Package ${playbook.packages.length + 1}`))}
           onDelete={deletePackages}
+          playerCount={playerCount(playbook)}
+          onPlayerCountChange={setPlayerCount}
         />
       ) : (
         <section className="space-y-3">
@@ -2690,21 +2712,21 @@ function FormationEditorPage({
   )
   const players = usePositions(packageId)
   const startingSpots = layoutPositions(players)
-  const [positions, setPositions] = useState<SlotPositions>(() => ({ ...startingSpots, ...(formation?.positions || {}) }))
+  const [positions, setPositions] = useState<SlotPositions>(() => placeAll(formation?.positions || {}, players))
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
-  /** Players both packages share keep their spots; anyone new starts in their usual place. */
+  /** Players both packages share keep their spots; anyone new stands in the open row at the bottom. */
   function changePackage(nextId: string) {
     const next = packages.find((item) => item.id === nextId)
     if (!next) return
     setPackageId(nextId)
-    setPositions((current) => ({ ...layoutPositions(next.positions), ...current }))
+    setPositions((current) => ({ ...current, ...placeAll(current, next.positions) }))
   }
 
   function save() {
     // Only the package's own players are kept, so stale spots never pile up.
     const kept = players.reduce<SlotPositions>((next, player) => {
-      next[player.code] = positions[player.code] || startingSpots[player.code]
+      next[player.code] = positions[player.code] || placeAll(positions, players)[player.code]
       return next
     }, {})
     onSave({ id: formation?.id || uid('formation'), name: name.trim() || 'Formation', packageId, positions: kept })

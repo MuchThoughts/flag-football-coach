@@ -1,4 +1,4 @@
-import { DEFAULT_POSITIONS, layoutPositions, withPositionTypes } from './playbook'
+import { DEFAULT_POSITIONS, layoutPositions, MAX_PLAYERS, MIN_PLAYERS, withPositionTypes } from './playbook'
 import type { CallSheet, CallSheetSection, Formation, PersonnelPackage, Playbook, PlaybookPlay, PlaybookPosition } from './types'
 
 /** Plays written before there were several playbooks all land in this one. */
@@ -43,6 +43,43 @@ export function createPackage(playbook: Playbook, name: string): PersonnelPackag
     name: name.trim() || 'New Package',
     positions: cleanPositions(playbook.packages[0]?.positions || DEFAULT_POSITIONS)
   }
+}
+
+/** How many players a playbook puts on the field; its packages all match. */
+export function playerCount(playbook: Playbook) {
+  return Math.max(...playbook.packages.map((item) => item.positions.length))
+}
+
+/**
+ * Sets every package to the same number of players. Players added at the end
+ * get the same code in every package, so a formation places them once for all
+ * of its packages; removing players takes them off the end.
+ */
+export function resizePackages(packages: PersonnelPackage[], count: number): PersonnelPackage[] {
+  const target = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, Math.round(count)))
+  const used = new Set(packages.flatMap((item) => item.positions.map((position) => position.code)))
+  const sharedCodes: string[] = []
+  const codeFor = (index: number) => {
+    if (sharedCodes[index]) return sharedCodes[index]
+    let number = index + 1
+    while (used.has(`player-${number}`)) number += 1
+    const code = `player-${number}`
+    used.add(code)
+    sharedCodes[index] = code
+    return code
+  }
+
+  return packages.map((item) => {
+    if (item.positions.length >= target) return { ...item, positions: item.positions.slice(0, target) }
+    const positions = [...item.positions]
+    while (positions.length < target) {
+      const names = new Set(positions.map((position) => position.label.trim()))
+      let number = 1
+      while (names.has(String(number))) number += 1
+      positions.push({ code: codeFor(positions.length), label: String(number), type: 'WR' })
+    }
+    return { ...item, positions }
+  })
 }
 
 /** The package a formation lines up in, or the playbook's first when it names none that exist. */

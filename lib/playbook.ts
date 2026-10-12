@@ -87,11 +87,44 @@ export function layoutPositions(positions: PlaybookPosition[] = DEFAULT_POSITION
   return spots
 }
 
-/** Falls back to the starting spot for any position the formation does not place. */
+/** Close enough that two circles would cover each other. */
+const crowded = 7
+const benchRow = 94
+
+/**
+ * A spot for every player. Players the formation already places keep their
+ * spot, and anyone it does not place takes their starting spot. When someone
+ * already stands there, as happens to players added to a playbook after the
+ * formation was saved, they wait in an open row at the bottom of the field
+ * instead, never hidden under another circle and ready to be dragged in.
+ */
+export function placeAll(placed: SlotPositions, positions: PlaybookPosition[] = DEFAULT_POSITIONS): SlotPositions {
+  const starting = layoutPositions(positions)
+  const spots: SlotPositions = {}
+  positions.forEach((position) => {
+    if (placed[position.code]) spots[position.code] = placed[position.code]
+  })
+  const taken = (spot: { x: number; y: number }) =>
+    Object.values(spots).some((other) => Math.abs(other.x - spot.x) < crowded && Math.abs(other.y - spot.y) < crowded)
+
+  let benchX = 8
+  positions.forEach((position) => {
+    if (spots[position.code]) return
+    const start = starting[position.code]
+    if (start && !taken(start)) {
+      spots[position.code] = start
+      return
+    }
+    while (benchX < 92 && taken({ x: benchX, y: benchRow })) benchX += crowded
+    spots[position.code] = { x: Math.min(benchX, 92), y: benchRow }
+    benchX += crowded
+  })
+  return spots
+}
+
+/** Where one player stands in a formation, placing anyone it does not yet place. */
 export function getFormationPosition(slotCode: string, formation?: Formation, positions: PlaybookPosition[] = DEFAULT_POSITIONS) {
-  const placed = formation?.positions[slotCode]
-  if (placed) return placed
-  return layoutPositions(positions)[slotCode] || { x: 50, y: 50 }
+  return placeAll(formation?.positions || {}, positions)[slotCode] || { x: 50, y: 50 }
 }
 
 /** Labels have to tell the circles apart, so blanks and repeats are not allowed. */

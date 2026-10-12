@@ -1,9 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Minus, Plus, Trash2 } from 'lucide-react'
 import { PositionRows } from '@/components/PositionsEditor'
-import { positionLabelsValid } from '@/lib/playbook'
+import { MAX_PLAYERS, MIN_PLAYERS, positionLabelsValid } from '@/lib/playbook'
 import type { Formation, PersonnelPackage } from '@/lib/types'
 
 /**
@@ -15,14 +15,19 @@ export function PackagesPanel({
   formations,
   onChange,
   onAdd,
-  onDelete
+  onDelete,
+  playerCount,
+  onPlayerCountChange
 }: {
   packages: PersonnelPackage[]
   formations: Formation[]
   onChange: (item: PersonnelPackage) => void
   onAdd: () => void
   onDelete: (packageIds: string[]) => void
+  playerCount: number
+  onPlayerCountChange: (count: number) => void
 }) {
+  const [confirmingFewer, setConfirmingFewer] = useState(false)
   const [selecting, setSelecting] = useState(false)
   const [selected, setSelected] = useState<string[]>([])
   // At least one package has to stay for formations to line up in.
@@ -36,6 +41,57 @@ export function PackagesPanel({
 
   return (
     <section className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#d8ded5] bg-white px-3 py-2">
+        <div>
+          <p className="text-sm font-black">Players on the field</p>
+          <p className="text-xs font-bold text-[#53665c]">Every package in this playbook has this many players.</p>
+        </div>
+        {confirmingFewer ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold">
+              Remove player {playerCount} from every package and formation?
+            </span>
+            <button type="button" onClick={() => setConfirmingFewer(false)} className="rounded-lg border border-[#d8ded5] px-3 py-1.5 text-sm font-black">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onPlayerCountChange(playerCount - 1)
+                setConfirmingFewer(false)
+              }}
+              className="rounded-lg bg-[#c2412d] px-3 py-1.5 text-sm font-black text-white"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setConfirmingFewer(true)}
+              disabled={playerCount <= MIN_PLAYERS}
+              aria-label="Fewer players"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
+            >
+              <Minus size={16} />
+            </button>
+            <span className="w-9 text-center font-display text-xl font-black" aria-live="polite">
+              {playerCount}
+            </span>
+            <button
+              type="button"
+              onClick={() => onPlayerCountChange(playerCount + 1)}
+              disabled={playerCount >= MAX_PLAYERS}
+              aria-label="More players"
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
       {selecting ? (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#c2412d] bg-[#fbeeeb] px-3 py-2">
           <p className="text-sm font-bold">

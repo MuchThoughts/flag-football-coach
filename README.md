@@ -75,10 +75,11 @@ in **Main Playbook**, with the original seven players.
 
 ### Personnel packages and formations
 
-The **Formations** tab starts with the playbook's **Personnel Packages**: named
-groups of players, like Base, Heavy or Empty, each with its own labels (an RB
-in Base can be a TE in Heavy). A new package starts as a copy of the first,
-and packages can add or remove players.
+The **Packages** tab, next to **Formations**, holds the playbook's personnel
+packages: named groups of players, like Base, Heavy or Empty, each with its own
+labels (an RB in Base can be a TE in Heavy). Each card shows the package's
+players and which formations use it. A new package starts as a copy of the
+first, and packages can add or remove players.
 
 **New Formation** opens a full page with every player in the chosen package
 already on the field, ready to drag into place. Switching a formation to
@@ -91,6 +92,11 @@ Openers, Runs, Passes, Red Zone and Extra Point boxes, with the playbook's runs
 and passes already sorted in. Rename, reorder, add or remove boxes and plays,
 then **Print** it on one landscape page, as play names only or with diagrams.
 Plays are numbered straight through the sheet.
+
+## Updates
+
+An open tab or home-screen app keeps running the version it loaded. When a
+newer version has been deployed, a yellow bar offers **Reload**.
 
 ## Exporting the playbook
 

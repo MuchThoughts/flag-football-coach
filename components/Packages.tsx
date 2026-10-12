@@ -2,11 +2,15 @@
 
 import { useState } from 'react'
 import { Plus, Trash2, Users, X } from 'lucide-react'
+import PlaybookField from '@/components/PlaybookField'
 import PositionsEditor from '@/components/PositionsEditor'
-import { positionLabelsValid } from '@/lib/playbook'
+import { layoutPositions, positionLabelsValid } from '@/lib/playbook'
 import type { Formation, PersonnelPackage } from '@/lib/types'
 
-/** The playbook's personnel packages, each with who it puts on the field. */
+/**
+ * The Packages tab: every personnel package in the playbook, who it puts on
+ * the field, and which formations line up in it.
+ */
 export function PackagesPanel({
   packages,
   formations,
@@ -19,42 +23,51 @@ export function PackagesPanel({
   onAdd: () => void
 }) {
   return (
-    <section className="rounded-xl border border-[#d8ded5] bg-white p-4 shadow-sm">
+    <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 font-display text-xl font-black">
-            <Users size={18} />
-            Personnel Packages
-          </h2>
-          <p className="text-sm font-bold text-[#53665c]">Who takes the field, and what each player is called.</p>
-        </div>
+        <p className="text-sm font-bold text-[#53665c]">Who takes the field, and what each player is called.</p>
         <button
           type="button"
           onClick={onAdd}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black hover:border-[#10201a]"
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white"
         >
           <Plus size={16} />
           New Package
         </button>
       </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-        {packages.map((item) => {
-          const used = formations.filter((formation) => formation.packageId === item.id).length
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {packages.map((item, index) => {
+          const used = formations.filter((formation) => formation.packageId === item.id)
           return (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onEdit(item)}
-              className="rounded-lg border border-[#d8ded5] p-3 text-left hover:border-[#10201a]"
-            >
-              <span className="flex items-baseline justify-between gap-2">
-                <span className="truncate font-black">{item.name}</span>
-                <span className="shrink-0 text-xs font-bold text-[#53665c]">
-                  {used} formation{used === 1 ? '' : 's'}
-                </span>
-              </span>
-              <span className="mt-2 flex flex-wrap gap-1">
+            <div key={item.id} className="flex min-w-0 flex-col rounded-lg border border-[#d8ded5] bg-white p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 truncate font-black">
+                    <Users size={15} className="shrink-0 text-[#53665c]" />
+                    {item.name}
+                    {index === 0 && (
+                      <span className="rounded-full bg-[#f7f5ee] px-2 py-0.5 text-[10px] font-black uppercase text-[#53665c]">Default</span>
+                    )}
+                  </p>
+                  <p className="text-xs font-bold text-[#53665c]">
+                    {item.positions.length} players · {used.length} formation{used.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onEdit(item)}
+                  className="shrink-0 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black hover:border-[#10201a]"
+                >
+                  Edit
+                </button>
+              </div>
+
+              <div className="mt-2">
+                <PlaybookField positions={layoutPositions(item.positions)} packageId={item.id} compact />
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1">
                 {item.positions.map((position) => (
                   <span
                     key={position.code}
@@ -63,8 +76,12 @@ export function PackagesPanel({
                     {position.label}
                   </span>
                 ))}
-              </span>
-            </button>
+              </div>
+
+              <p className="mt-2 truncate text-xs font-bold text-[#53665c]">
+                {used.length > 0 ? `Used by ${used.map((formation) => formation.name).join(', ')}` : 'No formations use it yet.'}
+              </p>
+            </div>
           )
         })}
       </div>

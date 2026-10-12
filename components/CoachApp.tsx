@@ -63,6 +63,7 @@ import { PackageEditorSheet, PackagesPanel } from '@/components/Packages'
 import { CallSheetsSheet } from '@/components/CallSheets'
 import PlaybookLibrary, { type PlaybookOverview } from '@/components/PlaybookLibrary'
 import { PackagesContext, usePackages, usePositions } from '@/components/PositionsContext'
+import UpdateBanner from '@/components/UpdateBanner'
 import TopToolbar, { type Section, type SyncStatus } from '@/components/TopToolbar'
 import { createCallSheet, createPackage, createPlaybook, removePlaysFromCallSheets, starterFormation } from '@/lib/playbooks'
 import { findLineup, getLineupsForUnit, lineupLabel, resolveDrive, resolveDrives } from '@/lib/lineups'
@@ -891,6 +892,7 @@ export default function CoachApp() {
         loadNow={loadNow}
         syncBusy={syncBusy}
       />
+      <UpdateBanner />
 
       <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
         {route.section === 'roster' ? (
@@ -2015,7 +2017,7 @@ function PlaybookPage({
   saveCallSheet: (sheet: CallSheet) => void
   deleteCallSheet: (sheetId: string) => void
 }) {
-  const [tab, setTab] = useState<'plays' | 'builder' | 'formations'>('plays')
+  const [tab, setTab] = useState<'plays' | 'builder' | 'formations' | 'packages'>('plays')
   const [filters, setFilters] = useState<PlayFilters>(emptyPlayFilters)
   const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
@@ -2115,7 +2117,8 @@ function PlaybookPage({
         options={[
           { value: 'plays', label: 'Plays' },
           { value: 'builder', label: 'Builder' },
-          { value: 'formations', label: 'Formations' }
+          { value: 'formations', label: 'Formations' },
+          { value: 'packages', label: 'Packages' }
         ]}
       />
 
@@ -2195,20 +2198,23 @@ function PlaybookPage({
         </section>
       ) : tab === 'builder' ? (
         <PlayBuilderPage plays={plays} formations={formations} savePlay={savePlay} deletePlay={deletePlay} />
+      ) : tab === 'packages' ? (
+        <PackagesPanel
+          packages={playbook.packages}
+          formations={formations}
+          onEdit={setEditingPackage}
+          onAdd={() => setEditingPackage(createPackage(playbook, `Package ${playbook.packages.length + 1}`))}
+        />
       ) : (
-        <section className="space-y-5">
-          <PackagesPanel
-            packages={playbook.packages}
-            formations={formations}
-            onEdit={setEditingPackage}
-            onAdd={() => setEditingPackage(createPackage(playbook, `Package ${playbook.packages.length + 1}`))}
-          />
-
+        <section className="space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <div>
-              <h2 className="font-display text-xl font-black">Formations</h2>
-              <p className="text-sm font-bold text-[#53665c]">Where each package lines up.</p>
-            </div>
+            <p className="text-sm font-bold text-[#53665c]">
+              Where each package lines up. Players and labels are set under{' '}
+              <button type="button" onClick={() => setTab('packages')} className="font-black text-[#1f7a4d] hover:underline">
+                Packages
+              </button>
+              .
+            </p>
             <button
               type="button"
               onClick={() => setEditingFormation('new')}

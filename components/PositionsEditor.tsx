@@ -2,7 +2,7 @@
 
 import { Minus, Plus, X } from 'lucide-react'
 import PlaybookField from '@/components/PlaybookField'
-import { PositionsContext } from '@/components/PositionsContext'
+import { PackagesContext } from '@/components/PositionsContext'
 import {
   layoutPositions,
   MAX_PLAYERS,
@@ -94,9 +94,9 @@ export default function PositionsEditor({
         )}
       </div>
 
-      <PositionsContext.Provider value={positions}>
+      <PackagesContext.Provider value={[{ id: 'preview', name: '', positions }]}>
         <PlaybookField positions={layoutPositions(positions)} compact />
-      </PositionsContext.Provider>
+      </PackagesContext.Provider>
 
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
         {positions.map((position, index) => (

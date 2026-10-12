@@ -159,6 +159,8 @@ export interface Formation {
   id: string
   teamId: string
   playbookId: string
+  /** Which personnel package lines up in it. */
+  packageId: string
   name: string
   positions: SlotPositions
   createdAt: string
@@ -182,13 +184,24 @@ export interface PlaybookPosition {
   label: string
 }
 
+/**
+ * A personnel package: which players take the field, under what labels. Packages
+ * in a playbook share position codes where they can, so switching a formation
+ * from one package to another keeps everybody's spot and only the labels change.
+ */
+export interface PersonnelPackage {
+  id: string
+  name: string
+  positions: PlaybookPosition[]
+}
+
 /** A named collection of plays, like an offense for one season or one opponent. */
 export interface Playbook {
   id: string
   teamId: string
   name: string
-  /** Who is on the field in this playbook, in order. */
-  positions: PlaybookPosition[]
+  /** The personnel packages this playbook lines up in; the first is the default. */
+  packages: PersonnelPackage[]
   createdAt: string
   updatedAt: string
 }

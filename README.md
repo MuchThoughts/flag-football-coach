@@ -69,10 +69,20 @@ the sync status on the right.
 
 Under **Playbooks** the team can keep several playbooks. A new playbook asks
 how many players are on the field (3 to 11) and what each one's circle says
-(QB, C, X, 1, and so on); the pencil next to a playbook's name changes them
-later. Each playbook has its own formations and plays, so a 5v5 playbook and
-a 7v7 one never mix. Plays saved before playbooks existed are in
-**Main Playbook**, with the original seven players.
+(QB, C, X, 1, and so on). Each playbook has its own formations and plays, so a
+5v5 playbook and a 7v7 one never mix. Plays saved before playbooks existed are
+in **Main Playbook**, with the original seven players.
+
+### Personnel packages and formations
+
+The **Formations** tab starts with the playbook's **Personnel Packages**: named
+groups of players, like Base, Heavy or Empty, each with its own labels (an RB
+in Base can be a TE in Heavy). A new package starts as a copy of the first,
+and packages can add or remove players.
+
+**New Formation** opens a full page with every player in the chosen package
+already on the field, ready to drag into place. Switching a formation to
+another package keeps everyone's spot and only changes the labels.
 
 ## Call sheets
 

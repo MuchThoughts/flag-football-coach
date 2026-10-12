@@ -44,7 +44,7 @@ export default function PlaybookLibrary({
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {playbooks.map(({ playbook, playCount, callSheetCount }) => (
           <button
             key={playbook.id}
@@ -58,7 +58,9 @@ export default function PlaybookLibrary({
             <span className="min-w-0 flex-1">
               <span className="block truncate font-display text-lg font-black">{playbook.name}</span>
               <span className="flex items-center gap-3 text-xs font-bold text-[#53665c]">
-                <span>{playbook.positions.length} players</span>
+                <span>
+                  {playbook.packages.length} package{playbook.packages.length === 1 ? '' : 's'}
+                </span>
                 <span>
                   {playCount} play{playCount === 1 ? '' : 's'}
                 </span>

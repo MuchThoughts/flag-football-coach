@@ -58,7 +58,7 @@ export default function TopToolbar({
 
   return (
     <header className="sticky top-0 z-40 bg-[#10201a] text-white shadow-[0_8px_24px_rgba(16,32,26,0.18)]">
-      <div className="mx-auto flex h-14 max-w-3xl items-stretch gap-1 px-1 sm:px-3">
+      <div className="mx-auto flex h-14 max-w-6xl items-stretch gap-1 px-1 sm:px-4">
         <nav className="flex items-stretch" aria-label="Main">
           {sections.map(({ value, label, icon: Icon }) => {
             const active = section === value

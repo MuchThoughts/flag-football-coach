@@ -16,7 +16,7 @@ export function PlayDiagram({
   formation?: Formation
   theme?: PlayDiagramTheme
 }) {
-  const positions = usePositions()
+  const positions = usePositions(formation?.packageId)
   return (
     <div
       className="play-diagram w-full overflow-hidden rounded border border-[#d8ded5]"
@@ -70,7 +70,7 @@ export async function savePlayImage(play: PlaybookPlay, formation: Formation | u
 export function SavePlayImageButton({ play, formation }: { play: PlaybookPlay; formation?: Formation }) {
   const [saving, setSaving] = useState(false)
   const [failed, setFailed] = useState(false)
-  const positions = usePositions()
+  const positions = usePositions(formation?.packageId)
 
   return (
     <button

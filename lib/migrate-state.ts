@@ -271,6 +271,7 @@ function migratePlaybook(state: AppState): { plays: PlaybookPlay[]; formations: 
         teamId: legacy.teamId,
         // Placed in a playbook along with the rest once playbooks are sorted out.
         playbookId: '',
+        packageId: '',
         name: formationName,
         positions: defaultFormationPositions(),
         createdAt: legacyTimestamp,

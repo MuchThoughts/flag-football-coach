@@ -21,6 +21,9 @@ import {
   MAIN_PLAYBOOK_ID,
   moveItem,
   numberCallSheet,
+  BASE_PACKAGE_ID,
+  createPackage,
+  packageFor,
   removePlaysFromCallSheets,
   starterFormation
 } from '../lib/playbooks'
@@ -809,6 +812,7 @@ assert.equal(roundTripFailures, 0)
     id: 'f-export',
     teamId: 't',
     playbookId: 'playbook-main',
+    packageId: 'package-base',
     name: 'Trips',
     positions: { QB: { x: 50, y: 70 } },
     createdAt: '',
@@ -947,9 +951,11 @@ assert.equal(roundTripFailures, 0)
 
   // A new playbook keeps its players and gets one formation laid out for them.
   const flag5 = createPlaybook('t', 'Five on Five', five, 'playbook-five')
-  assert.deepEqual(flag5.positions.map((item) => item.label), ['X', 'C', 'Z', 'QB', 'HB'])
+  assert.deepEqual(flag5.packages.map((item) => item.name), ['Base'])
+  assert.deepEqual(flag5.packages[0].positions.map((item) => item.label), ['X', 'C', 'Z', 'QB', 'HB'])
   const base = starterFormation(flag5)
   assert.equal(base.playbookId, 'playbook-five')
+  assert.equal(base.packageId, BASE_PACKAGE_ID)
   assert.deepEqual(Object.keys(base.positions).sort(), ['c', 'h', 'q', 'x', 'z'])
 
   // Diagrams draw the playbook's own players, with labels made safe for markup.
@@ -976,11 +982,32 @@ assert.equal(roundTripFailures, 0)
   assert.deepEqual(split.plays.map((play) => play.formationId), ['f-shared', 'f-shared--pb-b', 'f-shared--pb-b'])
 
   // Playbooks saved before players existed get the original seven.
-  const oldBook = { ...flag5, positions: undefined } as unknown as Playbook
-  assert.deepEqual(ensurePlaybooks('t', [oldBook], [], [], '').playbooks[0].positions, DEFAULT_POSITIONS)
+  const noPlayers = { ...flag5, packages: undefined } as unknown as Playbook
+  assert.deepEqual(ensurePlaybooks('t', [noPlayers], [], [], '').playbooks[0].packages[0].positions, DEFAULT_POSITIONS)
+
+  // A playbook from before packages turns its one set of players into a Base package.
+  const { packages: _dropped, ...withoutPackages } = flag5
+  const beforePackages = { ...withoutPackages, positions: five } as unknown as Playbook
+  const upgradedBook = ensurePlaybooks('t', [beforePackages], [], [], '').playbooks[0]
+  assert.deepEqual(upgradedBook.packages, [{ id: BASE_PACKAGE_ID, name: 'Base', positions: five }])
+  assert.equal('positions' in upgradedBook, false)
+
+  // A new package copies the base package's codes, so formations keep their spots.
+  const heavy = createPackage(flag5, ' Heavy ')
+  assert.equal(heavy.name, 'Heavy')
+  assert.notEqual(heavy.id, BASE_PACKAGE_ID)
+  assert.deepEqual(heavy.positions.map((item) => item.code), flag5.packages[0].positions.map((item) => item.code))
+  const withHeavy = { ...flag5, packages: [...flag5.packages, { ...heavy, positions: heavy.positions.map((item) => (item.code === 'h' ? { ...item, label: 'TE' } : item)) }] }
+  assert.equal(packageFor(withHeavy, heavy.id).positions.find((item) => item.code === 'h')!.label, 'TE')
+  assert.equal(packageFor(withHeavy, 'missing').id, BASE_PACKAGE_ID)
+
+  // A formation naming a package its playbook does not have falls back to the first.
+  const strayed = ensurePlaybooks('t', [withHeavy], [], [{ ...base, packageId: 'package-gone' }, { ...base, id: 'f-heavy', packageId: heavy.id }], '')
+  assert.deepEqual(strayed.formations.map((item) => item.packageId), [BASE_PACKAGE_ID, heavy.id])
 
   // A fresh app's seeded formations belong to the main playbook.
   assert.ok(migrateAppState(initialAppState).formations.every((item) => item.playbookId === MAIN_PLAYBOOK_ID))
+  assert.ok(migrateAppState(initialAppState).formations.every((item) => item.packageId === BASE_PACKAGE_ID))
 }
 
 console.log('logic tests passed')

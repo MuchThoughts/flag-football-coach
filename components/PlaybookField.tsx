@@ -78,7 +78,9 @@ export default function PlaybookField({
   onRoutesChange,
   onFootballsChange,
   compact = false,
-  fullscreenOnLandscape = false
+  fullscreenOnLandscape = false,
+  packageId,
+  large = false
 }: {
   positions: SlotPositions
   routes?: PlayRoute[]
@@ -88,6 +90,10 @@ export default function PlaybookField({
   onFootballsChange?: (footballs: PlayFootball[]) => void
   compact?: boolean
   fullscreenOnLandscape?: boolean
+  /** Which personnel package's players to draw; the playbook's first when left out. */
+  packageId?: string
+  /** Bigger circles, for a field that fills a desktop page. */
+  large?: boolean
 }) {
   const viewportRef = useRef<HTMLDivElement | null>(null)
   const [view, setView] = useState({ scale: 1, x: 0, y: 0 })
@@ -106,7 +112,7 @@ export default function PlaybookField({
   const footballDragRef = useRef<{ id: string; startX: number; startY: number; originX: number; originY: number; moved: boolean } | null>(null)
   const lastTapRef = useRef<{ routeId: string; at: number } | null>(null)
 
-  const slots = usePositions()
+  const slots = usePositions(packageId)
   const startingSpots = layoutPositions(slots)
   const drawable = Boolean(onRoutesChange)
   const fullscreen = fullscreenOnLandscape && landscape && !fullscreenOff
@@ -301,7 +307,7 @@ export default function PlaybookField({
     lastTapRef.current = { routeId, at: now }
   }
 
-  const circleSize = compact ? 'h-6 w-6 text-[9px]' : 'h-9 w-9 text-xs'
+  const circleSize = compact ? 'h-6 w-6 text-[9px]' : large ? 'h-9 w-9 text-xs lg:h-12 lg:w-12 lg:text-base' : 'h-9 w-9 text-xs'
   const viewportClass = fullscreen
     ? 'fixed inset-0 z-[60] rounded-none border-0'
     : `relative w-full ${compact ? '' : ''} rounded-lg border-4 border-[#f6f2df] shadow-field`

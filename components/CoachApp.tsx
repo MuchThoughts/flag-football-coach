@@ -2786,6 +2786,7 @@ function FormationEditorPage({
 
   const toolButton =
     'flex items-center gap-1 rounded-md border border-[#d8ded5] bg-white px-2 py-1 text-xs font-black disabled:opacity-40'
+  const headerButton = 'flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-black'
 
   return (
     <div className="space-y-2 py-2">
@@ -2799,25 +2800,82 @@ function FormationEditorPage({
         >
           <ChevronLeft size={18} />
         </button>
-        <h1 className="font-display text-xl font-black">{formation ? 'Edit Formation' : 'New Formation'}</h1>
-        <div className="ml-auto flex shrink-0 gap-1.5">
-          <button
-            type="button"
-            onClick={() => setDuplicating(true)}
-            title="Save this formation and make a copy, flipped if you like"
-            aria-label="Duplicate"
-            className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm font-black"
-          >
-            <Copy size={14} />
-            <span className="hidden sm:inline">Duplicate</span>
-          </button>
-          <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm font-black">
-            Cancel
-          </button>
-          <button type="button" onClick={save} className="rounded-lg bg-[#10201a] px-2.5 py-1.5 text-sm font-black text-white">
-            Save Formation
-          </button>
-        </div>
+        <h1 className="font-display text-xl font-black">
+          {formation ? 'Edit' : 'New'}
+          <span className="hidden sm:inline"> Formation</span>
+        </h1>
+        {confirmingDelete ? (
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">
+            <span className="text-sm font-bold text-[#c2412d]">
+              Delete this formation{playCount > 0 ? ` and its ${playCount} play${playCount === 1 ? '' : 's'}` : ''}?
+            </span>
+            <button type="button" onClick={() => setConfirmingDelete(false)} className={`${headerButton} border border-[#d8ded5] bg-white`}>
+              Keep
+            </button>
+            <button type="button" onClick={onDelete} className={`${headerButton} bg-[#c2412d] text-white`}>
+              <Trash2 size={14} />
+              Delete
+            </button>
+          </div>
+        ) : (
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            {/* Rarely used, so it stays quiet. */}
+            <button
+              type="button"
+              onClick={() => setMakeBase((current) => !current)}
+              aria-pressed={makeBase}
+              aria-label={makeBase ? 'Base formation' : 'Set as base formation'}
+              title="New formations start from the base formation, and new plays use it by default. Applies when you save."
+              className="flex items-center gap-1 px-1 text-[11px] font-bold text-[#53665c] hover:text-[#10201a]"
+            >
+              <Star size={13} className={makeBase ? 'fill-[#f7c948] text-[#b98a00]' : ''} />
+              <span className="hidden md:inline">{makeBase ? 'Base' : 'Set as base'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPositions((current) => ({ ...current, ...layoutPositions(players) }))
+                setLine(LINE_OF_SCRIMMAGE)
+              }}
+              aria-label="Reset Spots"
+              title="Put everyone back on their starting spots"
+              className={`${headerButton} border border-[#d8ded5] bg-white`}
+            >
+              <RotateCcw size={14} />
+              <span className="hidden md:inline">Reset</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDuplicating(true)}
+              title="Save this formation and make a copy, flipped if you like"
+              aria-label="Duplicate"
+              className={`${headerButton} border border-[#d8ded5] bg-white`}
+            >
+              <Copy size={14} />
+              <span className="hidden md:inline">Duplicate</span>
+            </button>
+            {onDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(true)}
+                aria-label="Delete Formation"
+                title="Delete this formation"
+                className={`${headerButton} border border-[#d8ded5] bg-white text-[#c2412d] hover:border-[#c2412d]`}
+              >
+                <Trash2 size={14} />
+                <span className="hidden md:inline">Delete</span>
+              </button>
+            )}
+            <button type="button" onClick={onClose} aria-label="Cancel" className={`${headerButton} border border-[#d8ded5] bg-white`}>
+              <X size={14} className="sm:hidden" />
+              <span className="hidden sm:inline">Cancel</span>
+            </button>
+            <button type="button" onClick={save} className={`${headerButton} bg-[#10201a] text-white`}>
+              <span className="sm:hidden">Save</span>
+              <span className="hidden sm:inline">Save Formation</span>
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_240px] lg:items-start">
@@ -2923,59 +2981,6 @@ function FormationEditorPage({
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setPositions((current) => ({ ...current, ...layoutPositions(players) }))
-              setLine(LINE_OF_SCRIMMAGE)
-            }}
-            className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] px-3 py-1.5 text-sm font-black"
-          >
-            <RotateCcw size={14} />
-            Reset Spots
-          </button>
-
-          {onDelete &&
-            (confirmingDelete ? (
-              <div className="rounded-lg border border-[#c2412d] p-2.5">
-                <p className="text-sm font-bold text-[#53665c]">
-                  Deleting this formation also deletes its {playCount} play{playCount === 1 ? '' : 's'}.
-                </p>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingDelete(false)}
-                    className="rounded-lg border border-[#d8ded5] px-3 py-1.5 font-black"
-                  >
-                    Cancel
-                  </button>
-                  <button type="button" onClick={onDelete} className="rounded-lg bg-[#c2412d] px-3 py-1.5 font-black text-white">
-                    Delete
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setConfirmingDelete(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-black text-[#c2412d] hover:bg-[#fbeeeb]"
-              >
-                <Trash2 size={14} />
-                Delete Formation
-              </button>
-            ))}
-
-          {/* Rarely used, so it stays out of the way. */}
-          <button
-            type="button"
-            onClick={() => setMakeBase((current) => !current)}
-            aria-pressed={makeBase}
-            title="New formations start from the base formation, and new plays use it by default. Applies when you save."
-            className="flex w-full items-center justify-center gap-1 text-[11px] font-bold text-[#53665c] hover:text-[#10201a]"
-          >
-            <Star size={11} className={makeBase ? 'fill-[#f7c948] text-[#b98a00]' : ''} />
-            {makeBase ? 'Base formation' : 'Set as base formation'}
-          </button>
         </aside>
       </div>
 

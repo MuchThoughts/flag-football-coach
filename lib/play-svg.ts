@@ -1,5 +1,6 @@
 import { DEFAULT_POSITIONS, placeAll } from './playbook'
 import { LINE_OF_SCRIMMAGE } from './positions'
+import { frameScale, lineEnd, LINE_STYLES, lineStart, normalizeLine, pathData, viewBox, viewOrDefault } from './play-lines'
 import type { Formation, PlaybookPlay, PlaybookPosition } from './types'
 
 /**
@@ -62,8 +63,11 @@ function football(point: { x: number; y: number }) {
   )
 }
 
+/** Grass, yard lines and the line of scrimmage reach well past the field, for zoomed-out views. */
+const reach = { x: -500, y: -400, w: 1200, h: 900 }
+
 export function playDiagramSvg(
-  play: Pick<PlaybookPlay, 'routes' | 'footballs'>,
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view'>>,
   formation: Formation | undefined,
   positions: PlaybookPosition[] = DEFAULT_POSITIONS,
   theme: PlayDiagramTheme = 'paper',
@@ -72,14 +76,18 @@ export function playDiagramSvg(
 ) {
   const colors = themes[theme]
   const parts: string[] = []
+  const view = viewOrDefault(play.view)
+  const box = viewBox(view)
+  // Strokes keep the same weight on the page whatever the zoom; the field and players scale.
+  const scale = frameScale(view)
 
   const line = formation?.lineOfScrimmage ?? LINE_OF_SCRIMMAGE
-  parts.push(`<rect width="${width}" height="${height}" fill="${colors.field}"/>`)
-  for (let x = 20; x < width; x += 20) {
-    parts.push(`<line x1="${x}" y1="0" x2="${x}" y2="${height}" stroke="${colors.yardLine}" stroke-width="0.4"/>`)
+  parts.push(`<rect x="${reach.x}" y="${reach.y}" width="${reach.w}" height="${reach.h}" fill="${colors.field}"/>`)
+  for (let x = reach.x; x <= reach.x + reach.w; x += 20) {
+    parts.push(`<line x1="${x}" y1="${reach.y}" x2="${x}" y2="${reach.y + reach.h}" stroke="${colors.yardLine}" stroke-width="${round(0.4 * scale)}"/>`)
   }
   parts.push(
-    `<line x1="0" y1="${line}" x2="${width}" y2="${line}" stroke="${colors.scrimmage}" stroke-width="0.5"/>`
+    `<line x1="${reach.x}" y1="${line}" x2="${reach.x + reach.w}" y2="${line}" stroke="${colors.scrimmage}" stroke-width="${round(0.5 * scale)}"/>`
   )
 
   play.routes.forEach((route) => {
@@ -93,18 +101,47 @@ export function playDiagramSvg(
   })
 
   const spots = placeAll(formation?.positions || {}, positions)
-  positions.forEach((slot) => {
-    const { x, y } = toWorld(spots[slot.code])
-    const fontSize = slot.label.length > 2 ? 2.7 : slot.label.length > 1 ? 3.4 : 4.2
+  const drawn = (play.lines || []).map(normalizeLine).filter((item) => item.points.length > 0)
+  drawn.forEach((item) => {
+    const start = lineStart(item, spots, drawn)
+    if (!start) return
+    const style = LINE_STYLES[item.kind]
+    const dash = style.dash ? ` stroke-dasharray="${style.dash.split(' ').map((part) => round(Number(part) * scale)).join(' ')}"` : ''
+    // Dark green on turf needs a pale edge to read.
+    if (item.kind === 'run' && theme === 'turf') {
+      parts.push(`<path d="${pathData(item, start)}" fill="none" stroke="rgba(246,242,223,0.55)" stroke-width="${round((style.width + 0.9) * scale)}" stroke-linecap="round" stroke-linejoin="round"/>`)
+    }
     parts.push(
-      `<circle cx="${x}" cy="${y}" r="${labels ? 4.4 : 4}" fill="${colors.marker}" stroke="${colors.markerText}" stroke-width="0.8"/>` +
-        (labels ? `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSize}" fill="${colors.markerText}">${escapeXml(slot.label)}</text>` : '')
+      `<path d="${pathData(item, start)}" fill="none" stroke="${style.color}" stroke-width="${round(style.width * scale)}" stroke-linecap="round" stroke-linejoin="round"${dash}/>` +
+        lineEnd(item, start, scale)
     )
   })
 
+  const fontSizeFor = (label: string) => (label.length > 2 ? 2.7 : label.length > 1 ? 3.4 : 4.2)
+  positions.forEach((slot) => {
+    const { x, y } = toWorld(spots[slot.code])
+    parts.push(
+      `<circle cx="${x}" cy="${y}" r="${labels ? 4.4 : 4}" fill="${colors.marker}" stroke="${colors.markerText}" stroke-width="0.8"/>` +
+        (labels ? `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSizeFor(slot.label)}" fill="${colors.markerText}">${escapeXml(slot.label)}</text>` : '')
+    )
+  })
+
+  // Where a motion ends, a dashed outline of the player shows where they will be at the snap.
+  drawn
+    .filter((item) => item.kind === 'motion')
+    .forEach((item) => {
+      const slot = positions.find((position) => position.code === item.playerCode)
+      if (!slot || !spots[slot.code]) return
+      const { x, y } = toWorld(item.points[item.points.length - 1])
+      parts.push(
+        `<circle cx="${x}" cy="${y}" r="${labels ? 4.4 : 4}" fill="${colors.marker}" fill-opacity="0.75" stroke="${colors.markerText}" stroke-width="0.7" stroke-dasharray="1.6 1.2"/>` +
+          (labels ? `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSizeFor(slot.label)}" fill="${colors.markerText}" fill-opacity="0.75">${escapeXml(slot.label)}</text>` : '')
+      )
+    })
+
   play.footballs.forEach((item) => parts.push(football(item)))
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width * 6}" height="${height * 6}">${parts.join('')}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${box.x} ${box.y} ${box.w} ${box.h}" width="${width * 6}" height="${height * 6}">${parts.join('')}</svg>`
 }
 
 /** File names stay readable but safe on every platform. */

@@ -14,6 +14,22 @@ import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
 import {
+  bendThrough,
+  DEFAULT_VIEW,
+  insertPivot,
+  lineStart,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  newLine,
+  normalizeLine,
+  pathData,
+  removePivot,
+  segmentMiddle,
+  viewBox,
+  viewOrDefault,
+  zoomAround
+} from '../lib/play-lines'
+import {
   alignHorizontally,
   alignVertically,
   centerX,
@@ -1206,6 +1222,83 @@ assert.equal(roundTripFailures, 0)
   assert.equal(flipName('Bunch left over'), 'Bunch right over')
   assert.equal(flipName('EMPTY RIGHT'), 'EMPTY LEFT')
   assert.equal(flipName('Brighton'), 'Brighton')
+}
+
+// ---- Drawing plays ----
+{
+  const spots = { qb: { x: 50, y: 70 }, x: { x: 10, y: 52 }, rb: { x: 40, y: 84 } }
+
+  // New lines head the right way from their player.
+  const route = newLine('r', 'route', 'x', spots.x)
+  assert.deepEqual(route.points, [{ x: 10, y: 34 }])
+  assert.deepEqual(newLine('b', 'block', 'x', spots.x).points, [{ x: 10, y: 47 }])
+  assert.deepEqual(newLine('m', 'motion', 'x', spots.x).points, [{ x: 22, y: 52 }])
+  assert.deepEqual(newLine('m2', 'motion', 'rb', { x: 80, y: 84 }).points, [{ x: 68, y: 84 }])
+
+  // Lines start at their player; after a motion, everything else starts where the motion ends.
+  const motion = newLine('m', 'motion', 'x', spots.x)
+  assert.deepEqual(lineStart(route, spots, [route]), spots.x)
+  assert.deepEqual(lineStart(route, spots, [route, motion]), { x: 22, y: 52 })
+  assert.deepEqual(lineStart(motion, spots, [route, motion]), spots.x)
+  assert.equal(lineStart({ ...route, playerCode: 'gone' }, spots, [route]), undefined)
+
+  // A pivot splits a segment in two straight halves; removing it joins them again.
+  const bent = { ...route, bends: [{ x: 4, y: 40 }] }
+  const pivoted = insertPivot(bent, 0, { x: 10, y: 44 })
+  assert.deepEqual(pivoted.points, [{ x: 10, y: 44 }, { x: 10, y: 34 }])
+  assert.deepEqual(pivoted.bends, [null, null])
+  const twoPivots = insertPivot(pivoted, 1, { x: 20, y: 40 })
+  assert.equal(twoPivots.points.length, 3)
+  assert.deepEqual(removePivot(twoPivots, 1).points, [{ x: 10, y: 44 }, { x: 10, y: 34 }])
+  // The end is not a pivot, so it stays.
+  assert.equal(removePivot(pivoted, 1), pivoted)
+
+  // Pulling a segment's middle curves it through that point; back on the line, it straightens.
+  const a = { x: 10, y: 52 }
+  const b = { x: 10, y: 34 }
+  const control = bendThrough(a, b, { x: 16, y: 43 })!
+  assert.deepEqual(segmentMiddle(a, b, control), { x: 16, y: 43 })
+  assert.equal(bendThrough(a, b, { x: 10.1, y: 43 }), null)
+  const curved = { ...route, bends: [control] }
+  assert.ok(pathData(curved, a).includes('Q'))
+  assert.ok(!pathData(route, a).includes('Q'))
+
+  // Old or damaged lines get one bend per segment.
+  assert.deepEqual(normalizeLine({ ...route, points: [{ x: 1, y: 2 }, { x: 3, y: 4 }], bends: undefined as unknown as null[] }).bends, [null, null])
+
+  // The view: always twice as wide as tall, zoom kept in range, the point under the pointer stays put.
+  assert.deepEqual(viewBox(DEFAULT_VIEW), { x: 0, y: 0, w: 200, h: 100 })
+  assert.deepEqual(viewBox({ x: 50, y: 40, zoom: 0.5 }), { x: -100, y: -60, w: 400, h: 200 })
+  assert.equal(zoomAround(DEFAULT_VIEW, 100, { x: 50, y: 50 }).zoom, MAX_ZOOM)
+  assert.equal(zoomAround(DEFAULT_VIEW, 0.01, { x: 50, y: 50 }).zoom, MIN_ZOOM)
+  const zoomed = zoomAround(DEFAULT_VIEW, 2, { x: 10, y: 52 })
+  const before = viewBox(DEFAULT_VIEW)
+  const after = viewBox(zoomed)
+  assert.ok(Math.abs((20 - before.x) / before.w - (20 - after.x) / after.w) < 0.001)
+  assert.deepEqual(viewOrDefault(undefined), DEFAULT_VIEW)
+  assert.deepEqual(viewOrDefault({ x: NaN, y: 0, zoom: 1 }), DEFAULT_VIEW)
+
+  // Exports draw every kind, in the saved view, with motions ending in a dashed player.
+  const formation = { ...starterFormation(createPlaybook('t', 'Draw')), positions: defaultFormationPositions() }
+  const drawnPlay = {
+    routes: [],
+    footballs: [],
+    view: { x: 50, y: 40, zoom: 0.5 },
+    lines: [
+      newLine('1', 'route', '1', { x: 8, y: 52 }),
+      newLine('2', 'run', 'RB', { x: 30, y: 84 }),
+      newLine('3', 'fake', 'QB', { x: 50, y: 72 }),
+      newLine('4', 'block', 'C', { x: 50, y: 52 }),
+      newLine('5', 'motion', '4', { x: 92, y: 52 })
+    ]
+  }
+  const svg = playDiagramSvg(drawnPlay, formation)
+  assert.ok(svg.includes('viewBox="-100 -60 400 200"'))
+  assert.ok(svg.includes('stroke="#0b4424"'))
+  assert.ok(svg.includes('stroke="#c2412d"'))
+  assert.ok(svg.includes('stroke-dasharray'))
+  assert.equal((svg.match(/<circle /g) || []).length, 8)
+  assert.equal((svg.match(/<polygon /g) || []).length, 3)
 }
 
 console.log('logic tests passed')

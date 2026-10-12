@@ -110,6 +110,27 @@ formation the playbook's base: new formations start from it and new plays
 pick it first. Switching a formation to
 another package keeps everyone's spot and only changes the labels.
 
+## Drawing plays
+
+**New Play**, or a play's **Edit Play**, opens the play editor: the field with
+the formation's players fixed in place, and the play's name, formation, pass or
+run, area and notes beside it.
+
+- **Moving around:** drag the grass to pan; scroll, pinch or use − / + to zoom
+  (⛶ fits the whole field). The view you save with is how the play shows
+  everywhere, in thumbnails, Save as Image and printing, so zoom out for deep
+  passes and in for runs.
+- **Adding lines:** tap a player for **Block** (a short line with a bar
+  across its end), **Motion** (a dotted line to a dashed copy of the player,
+  which you drag to where they go; their other lines then start there),
+  **Route** (solid), **Run** (bold dark green) or **Fake** (bold red).
+- **Editing a line:** tap it to select it (it glows yellow and shows its
+  handles). Drag the end, or any pivot, to reshape it. Double-click or hold on
+  the line to add a pivot, and double-click a pivot to remove it. Drag the
+  yellow dot in the middle of a segment to curve it. Tap the grass to let go;
+  Delete removes the selected line, and the menu under the field can switch it
+  between Route, Run, Fake and Block.
+
 ## Call sheets
 
 Open a playbook and tap **Call Sheet** to start one. A new sheet comes with

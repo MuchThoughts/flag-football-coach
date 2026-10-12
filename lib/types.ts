@@ -233,6 +233,31 @@ export interface CallSheet {
   updatedAt: string
 }
 
+/** What a drawn line means, which sets how it looks. */
+export type PlayLineKind = 'route' | 'run' | 'fake' | 'block' | 'motion'
+
+/**
+ * A line drawn from one player. It starts wherever that player lines up (or,
+ * after a motion, where the motion ends), so it moves with the formation.
+ * Points and bends are field percentages.
+ */
+export interface PlayLine {
+  id: string
+  playerCode: string
+  kind: PlayLineKind
+  /** Every point after the start: pivots, then the end. */
+  points: FieldPoint[]
+  /** One per segment: a control point that curves it, or null for straight. */
+  bends: (FieldPoint | null)[]
+}
+
+/** The part of the field a play is shown at: a centre in field percent, and how far in. */
+export interface PlayView {
+  x: number
+  y: number
+  zoom: number
+}
+
 export interface PlaybookPlay {
   id: string
   teamId: string
@@ -246,6 +271,10 @@ export interface PlaybookPlay {
   footballs: PlayFootball[]
   /** Set when the play was written in the builder rather than drawn. */
   steps?: PlayStep[]
+  /** Lines drawn in the play editor, anchored to players. */
+  lines?: PlayLine[]
+  /** How far in and where the play is shown, here and when exported. */
+  view?: PlayView
   createdAt: string
   updatedAt: string
 }

@@ -66,6 +66,7 @@ import PlaybookField from '@/components/PlaybookField'
 import { PlayDiagram, PrintPlaybookSheet, SavePlayImageButton } from '@/components/PlaybookExport'
 import { PackagesPanel } from '@/components/Packages'
 import FormationCanvas from '@/components/FormationCanvas'
+import PlayEditorPage from '@/components/PlayEditor'
 import DuplicateFormationSheet from '@/components/DuplicateFormationSheet'
 import { alignHorizontally, alignVertically, lineOf, spaceEvenly } from '@/lib/formation-edit'
 import { CallSheetsSheet } from '@/components/CallSheets'
@@ -2069,6 +2070,33 @@ function PlaybookPage({
   const formationFor = (play: PlaybookPlay) => formations.find((item) => item.id === play.formationId)
   const baseFormation = formations.find((item) => item.id === playbook.baseFormationId)
 
+  if (editingPlay) {
+    return (
+      <PackagesContext.Provider value={playbook.packages}>
+        <PlayEditorPage
+          key={editingPlay === 'new' ? 'new' : editingPlay.id}
+          play={editingPlay === 'new' ? undefined : editingPlay}
+          formations={formations}
+          defaultFormationId={baseFormation?.id}
+          onSave={(play) => {
+            savePlay(play)
+            setEditingPlay(null)
+          }}
+          onDelete={
+            editingPlay === 'new'
+              ? undefined
+              : () => {
+                  deletePlay(editingPlay.id)
+                  setEditingPlay(null)
+                  setOpenPlayId(null)
+                }
+          }
+          onClose={() => setEditingPlay(null)}
+        />
+      </PackagesContext.Provider>
+    )
+  }
+
   if (editingFormation) {
     return (
       <PackagesContext.Provider value={playbook.packages}>
@@ -2319,28 +2347,6 @@ function PlaybookPage({
         />
       )}
 
-      {editingPlay && (
-        <PlayEditorSheet
-          play={editingPlay === 'new' ? undefined : editingPlay}
-          formations={formations}
-          defaultFormationId={baseFormation?.id}
-          onSave={(play) => {
-            savePlay(play)
-            setEditingPlay(null)
-          }}
-          onDelete={
-            editingPlay === 'new'
-              ? undefined
-              : () => {
-                  deletePlay(editingPlay.id)
-                  setEditingPlay(null)
-                  setOpenPlayId(null)
-                }
-          }
-          onClose={() => setEditingPlay(null)}
-        />
-      )}
-
       {openPlay && (
         <PlayDetailSheet
           play={openPlay}
@@ -2509,14 +2515,7 @@ function PlayDetailSheet({
         </div>
 
         <div className="mt-3">
-          <PlaybookField
-            positions={formation?.positions || {}}
-            packageId={formation?.packageId}
-            lineOfScrimmage={formation?.lineOfScrimmage}
-            routes={play.routes}
-            footballs={play.footballs}
-            fullscreenOnLandscape
-          />
+          <PlayDiagram play={play} formation={formation} theme="turf" />
         </div>
 
         {play.notes && <p className="mt-3 whitespace-pre-wrap text-sm font-bold text-[#53665c]">{play.notes}</p>}
@@ -2527,190 +2526,6 @@ function PlayDetailSheet({
           </button>
           <SavePlayImageButton play={play} formation={formation} />
         </div>
-      </div>
-    </div>
-  )
-}
-
-function PlayEditorSheet({
-  play,
-  formations,
-  defaultFormationId,
-  onSave,
-  onDelete,
-  onClose
-}: {
-  play?: PlaybookPlay
-  formations: Formation[]
-  /** The playbook's base formation, picked for a new play. */
-  defaultFormationId?: string
-  onSave: (play: PlayDraft) => void
-  onDelete?: () => void
-  onClose: () => void
-}) {
-  const [name, setName] = useState(play?.name || '')
-  const [formationId, setFormationId] = useState(play?.formationId || defaultFormationId || formations[0]?.id || '')
-  const [type, setType] = useState<PlayType>(play?.type || 'pass')
-  const [area, setArea] = useState<PlayArea>(play?.area || 'middle')
-  const [notes, setNotes] = useState(play?.notes || '')
-  const [routes, setRoutes] = useState<PlayRoute[]>(play?.routes || [])
-  const [footballs, setFootballs] = useState<PlayFootball[]>(play?.footballs || [])
-
-  const formation = formations.find((item) => item.id === formationId)
-
-  function submit() {
-    if (!name.trim() || !formationId) return
-    onSave({
-      id: play?.id || uid('play'),
-      name: name.trim(),
-      formationId,
-      type,
-      area,
-      notes: notes.trim(),
-      routes,
-      footballs
-    })
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom lg:max-w-4xl lg:p-5">
-        <div className="flex items-center justify-between gap-3">
-          <h3 className="font-display text-xl font-black">{play ? 'Edit Play' : 'New Play'}</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <input
-          autoFocus
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Play name"
-          aria-label="Play name"
-          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
-        />
-
-        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Formation</p>
-        <select
-          value={formationId}
-          onChange={(event) => setFormationId(event.target.value)}
-          aria-label="Formation"
-          className="mt-1 w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-2 font-black outline-none"
-        >
-          {formations.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.name}
-            </option>
-          ))}
-        </select>
-
-        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Draw the play</p>
-        <p className="text-xs font-bold text-[#53665c]">
-          Drag to draw a route · hold for a handoff · double tap a line for a pass
-        </p>
-        <div className="mt-1">
-          <PlaybookField
-            positions={formation?.positions || {}}
-            packageId={formation?.packageId}
-            lineOfScrimmage={formation?.lineOfScrimmage}
-            routes={routes}
-            footballs={footballs}
-            onRoutesChange={setRoutes}
-            onFootballsChange={setFootballs}
-            fullscreenOnLandscape
-          />
-        </div>
-        <div className="mt-2 grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            onClick={() => setRoutes(routes.slice(0, -1))}
-            disabled={routes.length === 0}
-            className="rounded-lg border border-[#d8ded5] px-2 py-2 text-sm font-black disabled:opacity-40"
-          >
-            Undo Line
-          </button>
-          <button
-            type="button"
-            onClick={() => setFootballs(footballs.slice(0, -1))}
-            disabled={footballs.length === 0}
-            className="rounded-lg border border-[#d8ded5] px-2 py-2 text-sm font-black disabled:opacity-40"
-          >
-            Undo Ball
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setRoutes([])
-              setFootballs([])
-            }}
-            disabled={routes.length === 0 && footballs.length === 0}
-            className="rounded-lg border border-[#d8ded5] px-2 py-2 text-sm font-black disabled:opacity-40"
-          >
-            Clear
-          </button>
-        </div>
-
-        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Pass or run</p>
-        <div className="mt-1 grid grid-cols-2 gap-2">
-          {PLAY_TYPES.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setType(option)}
-              className={`rounded-lg border px-3 py-2 font-black capitalize ${
-                type === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-
-        <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Area of attack</p>
-        <div className="mt-1 grid grid-cols-3 gap-2">
-          {PLAY_AREAS.map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => setArea(option)}
-              className={`rounded-lg border px-2 py-3 text-sm font-black capitalize ${
-                area === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
-              }`}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
-
-        <textarea
-          value={notes}
-          onChange={(event) => setNotes(event.target.value)}
-          rows={3}
-          placeholder="Routes, reads, when to call it"
-          aria-label="Play notes"
-          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-2 text-sm outline-none focus:border-[#1f7a4d]"
-        />
-
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!name.trim() || !formationId}
-          className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40"
-        >
-          Save Play
-        </button>
-        {onDelete && (
-          <button type="button" onClick={onDelete} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-black text-[#c2412d]">
-            <Trash2 size={15} />
-            Delete Play
-          </button>
-        )}
       </div>
     </div>
   )

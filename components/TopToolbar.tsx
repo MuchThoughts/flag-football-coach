@@ -58,7 +58,7 @@ export default function TopToolbar({
 
   return (
     <header className="sticky top-0 z-40 bg-[#10201a] text-white shadow-[0_8px_24px_rgba(16,32,26,0.18)]">
-      <div className="mx-auto flex h-14 max-w-6xl items-stretch gap-1 px-1 sm:px-4">
+      <div className="mx-auto flex h-12 max-w-6xl items-stretch gap-1 px-1 sm:px-4">
         <nav className="flex items-stretch" aria-label="Main">
           {sections.map(({ value, label, icon: Icon }) => {
             const active = section === value
@@ -72,7 +72,7 @@ export default function TopToolbar({
                   active ? 'text-white' : 'text-white/60 hover:text-white'
                 }`}
               >
-                <Icon size={18} strokeWidth={2.4} />
+                <Icon size={16} strokeWidth={2.4} />
                 {label}
                 <span
                   aria-hidden
@@ -91,7 +91,7 @@ export default function TopToolbar({
             <select
               value={selectedGameId}
               onChange={(event) => setSelectedGameId(event.target.value)}
-              className="max-w-[118px] appearance-none truncate rounded-lg border border-white/15 bg-white/10 py-1.5 pl-3 pr-7 text-sm font-black text-white outline-none hover:bg-white/15 focus:border-[#f7c948] sm:max-w-[200px]"
+              className="max-w-[118px] appearance-none truncate rounded-lg border border-white/15 bg-white/10 py-1.5 pl-2.5 pr-7 text-sm font-black text-white outline-none hover:bg-white/15 focus:border-[#f7c948] sm:max-w-[200px]"
             >
               {games.map((game) => (
                 <option key={game.id} value={game.id} className="text-[#10201a]">
@@ -106,7 +106,7 @@ export default function TopToolbar({
             <summary
               aria-label={`Sync: ${syncLabels[syncStatus]}`}
               title={syncLabels[syncStatus]}
-              className="relative flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-lg border border-white/15 bg-white/10 hover:bg-white/15 [&::-webkit-details-marker]:hidden"
+              className="relative flex h-8 w-8 cursor-pointer list-none items-center justify-center rounded-lg border border-white/15 bg-white/10 hover:bg-white/15 [&::-webkit-details-marker]:hidden"
             >
               <SyncIcon size={17} />
               <span className={`absolute right-1.5 top-1.5 h-2 w-2 rounded-full ring-2 ring-[#10201a] ${syncDot}`} />

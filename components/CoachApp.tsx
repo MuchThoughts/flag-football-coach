@@ -895,7 +895,7 @@ export default function CoachApp() {
   const openPlaybook = route.playbookId ? playbooks.find((playbook) => playbook.id === route.playbookId) : undefined
 
   return (
-    <main className="min-h-screen pb-10">
+    <main className="min-h-screen pb-6">
       <TopToolbar
         section={route.section}
         onNavigate={(section) => navigate(section === 'playbooks' ? { section, playbookId: null } : { section })}
@@ -913,15 +913,16 @@ export default function CoachApp() {
       <div className="mx-auto w-full max-w-6xl px-3 sm:px-6">
         {route.section === 'roster' ? (
           <>
-            <h1 className="pt-5 font-display text-3xl font-black">Roster</h1>
-            <SubTabs
-              value={route.rosterTab}
-              onChange={(rosterTab) => navigate({ rosterTab })}
-              options={[
-                { value: 'planning', label: 'Planning' },
-                { value: 'gameday', label: 'Gameday' }
-              ]}
-            />
+            <div className="pt-2">
+              <SubTabs
+                value={route.rosterTab}
+                onChange={(rosterTab) => navigate({ rosterTab })}
+                options={[
+                  { value: 'planning', label: 'Planning' },
+                  { value: 'gameday', label: 'Gameday' }
+                ]}
+              />
+            </div>
             {route.rosterTab === 'planning' ? (
               <PlanningPage
                 availablePlayers={availablePlayers}
@@ -1031,7 +1032,7 @@ function SubTabs<T extends string>({
   options: Array<{ value: T; label: string }>
 }) {
   return (
-    <div className="mt-3 flex gap-1 border-b border-[#d8ded5]" role="tablist">
+    <div className="flex gap-1 overflow-x-auto border-b border-[#d8ded5]" role="tablist">
       {options.map((option) => {
         const active = option.value === value
         return (
@@ -1041,7 +1042,7 @@ function SubTabs<T extends string>({
             role="tab"
             aria-selected={active}
             onClick={() => onChange(option.value)}
-            className={`-mb-px border-b-[3px] px-3 py-2 text-sm font-black ${
+            className={`-mb-px shrink-0 border-b-[3px] px-3 py-1.5 text-sm font-black ${
               active ? 'border-[#1f7a4d] text-[#10201a]' : 'border-transparent text-[#53665c] hover:text-[#10201a]'
             }`}
           >
@@ -1153,29 +1154,23 @@ function PlanningPage({
   }
 
   return (
-    <div className="space-y-4 py-4 lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:items-start lg:gap-8 lg:space-y-0">
-      <section className="space-y-3 lg:sticky lg:top-20">
-        <div className="flex items-center justify-between gap-3">
+    <div className="space-y-2 py-2 lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:items-start lg:gap-5 lg:space-y-0">
+      <section className="space-y-2 lg:sticky lg:top-14">
+        <div className="flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => setRosterCollapsed(!rosterCollapsed)}
             aria-expanded={!rosterCollapsed}
-            className="flex min-w-0 items-center gap-2 text-left"
+            title="Swipe a player off if they are not here."
+            className="flex min-w-0 items-center gap-1.5 text-left"
           >
-            <ChevronDown size={20} className={`shrink-0 transition-transform ${rosterCollapsed ? '-rotate-90' : ''}`} />
-            <span className="min-w-0">
-              <span className="block font-display text-xl font-black">Roster</span>
-              <span className="block text-sm font-bold text-[#53665c]">
-                {rosterCollapsed
-                  ? `${availablePlayers.length} here${unavailablePlayers.length > 0 ? ` · ${unavailablePlayers.length} out` : ''}`
-                  : 'Swipe a player off if they are not here.'}
-              </span>
+            <ChevronDown size={18} className={`shrink-0 transition-transform ${rosterCollapsed ? '-rotate-90' : ''}`} />
+            <span className="font-display text-lg font-black">Roster</span>
+            <span className="truncate text-xs font-bold text-[#53665c]">
+              {availablePlayers.length} here{unavailablePlayers.length > 0 ? ` · ${unavailablePlayers.length} out` : ''}
             </span>
           </button>
           <div className="flex shrink-0 items-center gap-2">
-            <div className="rounded-lg bg-[#1f7a4d] px-3 py-1 text-center text-white">
-              <p className="font-display text-xl font-black leading-tight">{availablePlayers.length}</p>
-            </div>
             <button
               type="button"
               onClick={() => {
@@ -1184,9 +1179,9 @@ function PlanningPage({
               }}
               aria-label="Add player"
               aria-expanded={addingPlayer}
-              className="flex h-10 w-10 items-center justify-center rounded-full bg-[#10201a] text-white"
+              className="flex h-7 w-7 items-center justify-center rounded-full bg-[#10201a] text-white"
             >
-              {addingPlayer ? <X size={18} /> : <Plus size={20} />}
+              {addingPlayer ? <X size={15} /> : <Plus size={16} />}
             </button>
           </div>
         </div>
@@ -1202,9 +1197,9 @@ function PlanningPage({
                 if (event.key === 'Escape') setAddingPlayer(false)
               }}
               placeholder="First name"
-              className="min-w-0 rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+              className="min-w-0 rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
             />
-            <button type="button" onClick={submitNewPlayer} className="rounded-lg bg-[#10201a] px-4 py-3 font-black text-white">
+            <button type="button" onClick={submitNewPlayer} className="rounded-lg bg-[#10201a] px-3 py-1.5 font-black text-white">
               Add
             </button>
           </div>
@@ -1212,9 +1207,9 @@ function PlanningPage({
 
         {!rosterCollapsed && (
           <>
-            <div className="space-y-2">
+            <div className="space-y-1">
               {availablePlayers.length === 0 && (
-                <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+                <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
                   Nobody on the list yet.
                 </p>
               )}
@@ -1233,7 +1228,7 @@ function PlanningPage({
               <button
                 type="button"
                 onClick={() => setShowAddBack(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black"
+                className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black"
               >
                 <Undo2 size={16} />
                 Add Back ({unavailablePlayers.length})
@@ -1262,24 +1257,28 @@ function PlanningPage({
         )}
       </section>
 
-      <section className="space-y-3 border-t border-[#d8ded5] pt-4 lg:border-t-0 lg:pt-0">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-display text-xl font-black">Lineups</h2>
-            <p className="text-sm font-bold text-[#53665c]">Four each way. Drives cycle through them.</p>
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
+      <section className="space-y-2 border-t border-[#d8ded5] pt-3 lg:border-t-0 lg:pt-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <h2 className="font-display text-lg font-black" title="Four each way. Drives cycle through them.">
+            Lineups
+          </h2>
+          {selectedLineup && (
+            <span className="text-xs font-bold text-[#53665c]">
+              {lineupLabel(selectedLineup)} · {Object.values(selectedLineup.assignments).filter(Boolean).length}/7 assigned
+            </span>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <button
               type="button"
               onClick={() => setShowCopyDrive(true)}
               disabled={copySourceLineups.length === 0}
-              className="flex items-center gap-2 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black disabled:opacity-40"
+              className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1 text-sm font-black disabled:opacity-40"
             >
-              <Copy size={15} />
+              <Copy size={14} />
               Copy
             </button>
-            <button type="button" onClick={autoFillSelectedLineup} disabled={!selectedLineup} className="flex items-center gap-2 rounded-lg bg-[#f7c948] px-3 py-2 text-sm font-black text-[#10201a] disabled:opacity-40">
-              <Save size={15} />
+            <button type="button" onClick={autoFillSelectedLineup} disabled={!selectedLineup} className="flex items-center gap-1.5 rounded-lg bg-[#f7c948] px-2.5 py-1 text-sm font-black text-[#10201a] disabled:opacity-40">
+              <Save size={14} />
               Fill
             </button>
           </div>
@@ -1289,12 +1288,6 @@ function PlanningPage({
 
         {selectedLineup && (
           <>
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
-              <p className="font-black">{lineupLabel(selectedLineup)}</p>
-              <p className="text-sm font-bold text-[#53665c]">
-                {Object.values(selectedLineup.assignments).filter(Boolean).length}/7 assigned
-              </p>
-            </div>
             {lineupWarnings.length > 0 && (
               <div className="mt-2 rounded-lg bg-[#f7c948] px-3 py-2 text-sm font-black text-[#10201a]">
                 {lineupWarnings.map((warning) => warning.message).join(' · ')}
@@ -1357,30 +1350,33 @@ function PlanningPage({
   )
 }
 
-function FilterChips<T extends string>({
-  options,
+/** A filter as one small dropdown, so several fit on one line. */
+function FilterSelect<T extends string>({
+  label,
   value,
-  onChange
+  onChange,
+  options
 }: {
-  options: Array<{ value: T; label: string }>
+  label: string
   value: T
   onChange: (value: T) => void
+  options: Array<{ value: T; label: string }>
 }) {
   return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value as T)}
+      aria-label={label}
+      className={`max-w-[160px] rounded-lg border bg-white px-2 py-1.5 text-sm font-bold capitalize outline-none focus:border-[#1f7a4d] ${
+        value === 'all' ? 'border-[#d8ded5] text-[#53665c]' : 'border-[#10201a] text-[#10201a]'
+      }`}
+    >
       {options.map((option) => (
-        <button
-          key={option.value}
-          type="button"
-          onClick={() => onChange(option.value)}
-          className={`shrink-0 rounded-full border px-3 py-1 text-xs font-black uppercase ${
-            value === option.value ? 'border-[#10201a] bg-[#10201a] text-white' : 'border-[#d8ded5] bg-white text-[#53665c]'
-          }`}
-        >
+        <option key={option.value} value={option.value}>
           {option.label}
-        </button>
+        </option>
       ))}
-    </div>
+    </select>
   )
 }
 
@@ -1446,23 +1442,25 @@ function PlayRow({
         if (holdFiredRef.current) return
         onOpen()
       }}
-      className="relative w-full select-none overflow-hidden rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left"
+      className="relative flex w-full select-none flex-col overflow-hidden rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-left"
     >
       <div
         aria-hidden
         style={{ width: holding ? '100%' : '0%', transition: holding ? `width ${playHoldDuration}ms linear` : 'none' }}
         className="absolute inset-y-0 left-0 bg-[#f7c948]/50"
       />
-      <div className="relative">
+      <div className="relative w-full">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate font-black">{play.name}</span>
-          <span className="shrink-0 rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black uppercase text-[#53665c]">
+          <span className="truncate text-sm font-black">{play.name}</span>
+          <span className="shrink-0 rounded-full bg-[#f7f5ee] px-1.5 py-0.5 text-[10px] font-black uppercase text-[#53665c]">
             {play.type}
           </span>
         </div>
-        {subtitle && <p className="mt-1 truncate text-sm font-bold text-[#53665c]">{subtitle}</p>}
-        <p className="mt-1 text-xs font-black uppercase text-[#53665c]">{meta}</p>
-        {preview && <div className="pointer-events-none mt-2 hidden lg:block">{preview}</div>}
+        <p className="truncate text-xs font-bold text-[#53665c]">
+          <span className="font-black uppercase">{meta}</span>
+          {subtitle && <span> · {subtitle}</span>}
+        </p>
+        {preview && <div className="pointer-events-none mt-1 hidden lg:block">{preview}</div>}
       </div>
     </button>
   )
@@ -1484,7 +1482,7 @@ function PlayActionsSheet({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
         <h3 className="truncate font-display text-xl font-black">{play.name}</h3>
         <p className="mt-1 text-sm font-bold text-[#53665c]">
           {confirming ? 'Deleting a play cannot be undone.' : 'Edit the call or delete the play.'}
@@ -1495,14 +1493,14 @@ function PlayActionsSheet({
             <button
               type="button"
               onClick={() => setConfirming(false)}
-              className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black"
+              className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={onDelete}
-              className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-3 font-black text-white"
+              className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white"
             >
               <Trash2 size={16} />
               Delete
@@ -1510,18 +1508,18 @@ function PlayActionsSheet({
           </div>
         ) : (
           <div className="mt-4 space-y-2">
-            <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
+            <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white">
               Edit
             </button>
             <button
               type="button"
               onClick={() => setConfirming(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#c2412d] px-3 py-3 font-black text-[#c2412d]"
+              className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#c2412d] px-3 py-2 font-black text-[#c2412d]"
             >
               <Trash2 size={16} />
               Delete
             </button>
-            <button type="button" onClick={onClose} className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+            <button type="button" onClick={onClose} className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
               Cancel
             </button>
           </div>
@@ -1624,14 +1622,14 @@ function PlayBuilderPage({
   // --- Step one: which formation are we in?
   if (!formation) {
     return (
-      <div className="space-y-4 py-4">
+      <div className="space-y-3 py-3">
         <div>
           <h2 className="font-display text-xl font-black">Play Builder</h2>
           <p className="text-sm font-bold text-[#53665c]">Start with a formation, then stack up the call.</p>
         </div>
 
         {formations.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+          <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
             Build a formation in the playbook first.
           </p>
         ) : (
@@ -1680,7 +1678,7 @@ function PlayBuilderPage({
 
   // --- Step two: stack up the components.
   return (
-    <div className="space-y-4 py-4">
+    <div className="space-y-3 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h2 className="font-display text-xl font-black">{formation.name}</h2>
@@ -1799,7 +1797,7 @@ function PlayBuilderPage({
                   key={component.id}
                   type="button"
                   onClick={() => addStep(component.id)}
-                  className="rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-sm font-black"
+                  className="rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black"
                 >
                   {component.label}
                 </button>
@@ -1841,7 +1839,7 @@ function PlayBuilderPage({
             }}
             placeholder="Play name"
             aria-label="Play name"
-            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black outline-none focus:border-[#1f7a4d]"
+            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-2 font-black outline-none focus:border-[#1f7a4d]"
           />
         </label>
         {nameEdited && call && (
@@ -1864,7 +1862,7 @@ function PlayBuilderPage({
             onChange={(event) => setNotes(event.target.value)}
             placeholder="When to call it"
             aria-label="Play notes"
-            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+            className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
           />
         </label>
 
@@ -1878,7 +1876,7 @@ function PlayBuilderPage({
             type="button"
             onClick={save}
             disabled={steps.length === 0 || incomplete}
-            className="flex-1 rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40"
+            className="flex-1 rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40"
           >
             {playId ? 'Save changes' : 'Save play'}
           </button>
@@ -1889,7 +1887,7 @@ function PlayBuilderPage({
                 deletePlay(playId)
                 reset()
               }}
-              className="rounded-lg border border-[#b4402f] px-3 py-3 font-black text-[#b4402f]"
+              className="rounded-lg border border-[#b4402f] px-3 py-2 font-black text-[#b4402f]"
             >
               Delete
             </button>
@@ -1968,10 +1966,10 @@ function BuiltPlayList({
         onChange={(event) => setSearch(event.target.value)}
         placeholder="Search plays"
         aria-label="Search every play"
-        className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+        className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
       />
       {visible.length === 0 && (
-        <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+        <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
           No plays match that.
         </p>
       )}
@@ -2080,53 +2078,52 @@ function PlaybookPage({
 
   return (
     <PackagesContext.Provider value={playbook.packages}>
-    <div className="space-y-4 py-5">
-      <div>
+    <div className="space-y-2 py-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <button
           type="button"
           onClick={onBack}
-          className="-ml-2 flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-black text-[#53665c] hover:bg-white"
+          aria-label="All playbooks"
+          title="All playbooks"
+          className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#53665c] hover:bg-white"
         >
-          <ChevronLeft size={16} />
-          All playbooks
+          <ChevronLeft size={18} />
         </button>
-        <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="truncate font-display text-3xl font-black">{playbook.name}</h1>
-              <button
-                type="button"
-                onClick={() => setEditingDetails(true)}
-                aria-label="Rename or delete playbook"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[#53665c] hover:bg-white"
-              >
-                <Pencil size={15} />
-              </button>
-            </div>
-            <p className="text-sm font-bold text-[#53665c]">
-              {playbook.packages.length} package{playbook.packages.length === 1 ? '' : 's'} · {plays.length} play
-              {plays.length === 1 ? '' : 's'} · {callSheets.length} call sheet{callSheets.length === 1 ? '' : 's'}
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={() => setShowCallSheets(true)}
-              className="flex items-center gap-1.5 rounded-lg bg-[#10201a] px-3 py-2 text-sm font-black text-white"
-            >
-              <ClipboardList size={16} />
-              Call Sheet
-            </button>
-            <button
-              type="button"
-              onClick={() => setExporting(true)}
-              disabled={plays.length === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black disabled:opacity-40"
-            >
-              <FileDown size={16} />
-              Export
-            </button>
-          </div>
+        <h1 className="min-w-0 truncate font-display text-xl font-black">{playbook.name}</h1>
+        <button
+          type="button"
+          onClick={() => setEditingDetails(true)}
+          aria-label="Rename or delete playbook"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[#53665c] hover:bg-white"
+        >
+          <Pencil size={14} />
+        </button>
+        <p className="hidden text-xs font-bold text-[#53665c] sm:block">
+          {playbook.packages.length} package{playbook.packages.length === 1 ? '' : 's'} · {plays.length} play
+          {plays.length === 1 ? '' : 's'} · {callSheets.length} call sheet{callSheets.length === 1 ? '' : 's'}
+        </p>
+        <div className="ml-auto flex shrink-0 gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShowCallSheets(true)}
+            aria-label="Call Sheet"
+            title="Call Sheet"
+            className="flex items-center gap-1.5 rounded-lg bg-[#10201a] px-2.5 py-1.5 text-sm font-black text-white"
+          >
+            <ClipboardList size={15} />
+            <span className="hidden sm:inline">Call Sheet</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setExporting(true)}
+            disabled={plays.length === 0}
+            aria-label="Export"
+            title="Export"
+            className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm font-black disabled:opacity-40"
+          >
+            <FileDown size={15} />
+            <span className="hidden sm:inline">Export</span>
+          </button>
         </div>
       </div>
 
@@ -2142,60 +2139,56 @@ function PlaybookPage({
       />
 
       {tab === 'plays' ? (
-        <section className="space-y-3">
-          <div className="flex gap-2">
+        <section className="space-y-2">
+          <div className="flex flex-wrap gap-1.5">
             <input
               value={filters.search}
               onChange={(event) => setFilters({ ...filters, search: event.target.value })}
               placeholder="Search plays"
               aria-label="Search plays"
-              className="min-w-0 flex-1 rounded-lg border border-[#d8ded5] bg-white px-3 py-2.5 outline-none focus:border-[#1f7a4d]"
+              className="min-w-[140px] flex-1 rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm outline-none focus:border-[#1f7a4d]"
+            />
+            <FilterSelect
+              label="Type"
+              value={filters.type}
+              onChange={(type) => setFilters({ ...filters, type })}
+              options={[{ value: 'all', label: 'All types' }, ...PLAY_TYPES.map((type) => ({ value: type, label: type }))]}
+            />
+            <FilterSelect
+              label="Area"
+              value={filters.area}
+              onChange={(area) => setFilters({ ...filters, area })}
+              options={[{ value: 'all', label: 'Any area' }, ...PLAY_AREAS.map((area) => ({ value: area, label: area }))]}
+            />
+            <FilterSelect
+              label="Formation"
+              value={filters.formationId}
+              onChange={(formationId) => setFilters({ ...filters, formationId })}
+              options={[
+                { value: 'all', label: 'Any formation' },
+                ...formations.map((formation) => ({ value: formation.id, label: formation.name }))
+              ]}
             />
             <button
               type="button"
               onClick={() => setEditingPlay('new')}
               disabled={formations.length === 0}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white disabled:opacity-40"
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-[#1f7a4d] px-2.5 py-1.5 text-sm font-black text-white disabled:opacity-40"
             >
-              <Plus size={16} />
+              <Plus size={15} />
               New Play
             </button>
           </div>
 
-          <FilterChips
-            value={filters.type}
-            onChange={(type) => setFilters({ ...filters, type })}
-            options={[
-              { value: 'all', label: 'All' },
-              ...PLAY_TYPES.map((type) => ({ value: type, label: type }))
-            ]}
-          />
-          <FilterChips
-            value={filters.area}
-            onChange={(area) => setFilters({ ...filters, area })}
-            options={[
-              { value: 'all', label: 'Any area' },
-              ...PLAY_AREAS.map((area) => ({ value: area, label: area }))
-            ]}
-          />
-          <FilterChips
-            value={filters.formationId}
-            onChange={(formationId) => setFilters({ ...filters, formationId })}
-            options={[
-              { value: 'all', label: 'Any formation' },
-              ...formations.map((formation) => ({ value: formation.id, label: formation.name }))
-            ]}
-          />
-
           {formations.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
               Build a formation first, then plays can be drawn from it.
             </p>
           )}
 
-          <div className="grid gap-2 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {formations.length > 0 && visiblePlays.length === 0 && (
-              <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c] lg:col-span-full">
+              <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c] lg:col-span-full">
                 {plays.length === 0 ? 'No plays yet. Draw one with New Play, or write one in the Builder.' : 'No plays match those filters.'}
               </p>
             )}
@@ -2228,10 +2221,10 @@ function PlaybookPage({
           onPlayerCountChange={setPlayerCount}
         />
       ) : (
-        <section className="space-y-3">
+        <section className="space-y-2">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-sm font-bold text-[#53665c]">
-              Where each package lines up. Players and labels are set under{' '}
+            <p className="text-xs font-bold text-[#53665c]">
+              Players and labels are set under{' '}
               <button type="button" onClick={() => setTab('packages')} className="font-black text-[#1f7a4d] hover:underline">
                 Packages
               </button>
@@ -2240,20 +2233,20 @@ function PlaybookPage({
             <button
               type="button"
               onClick={() => setEditingFormation('new')}
-              className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white"
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-[#1f7a4d] px-2.5 py-1.5 text-sm font-black text-white"
             >
-              <Plus size={16} />
+              <Plus size={15} />
               New Formation
             </button>
           </div>
           {formations.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
               No formations yet.
             </p>
           )}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {formations.map((formation) => (
-            <div key={formation.id} className="rounded-lg border border-[#d8ded5] bg-white p-3">
+            <div key={formation.id} className="rounded-lg border border-[#d8ded5] bg-white p-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="min-w-0">
                   <p className="truncate font-black">{formation.name}</p>
@@ -2266,12 +2259,12 @@ function PlaybookPage({
                 <button
                   type="button"
                   onClick={() => setEditingFormation(formation)}
-                  className="shrink-0 rounded-lg border border-[#d8ded5] px-3 py-2 text-sm font-black"
+                  className="shrink-0 rounded-md border border-[#d8ded5] px-2 py-1 text-xs font-black"
                 >
                   Edit
                 </button>
               </div>
-              <div className="mt-2">
+              <div className="mt-1.5">
                 <PlaybookField positions={formation.positions} packageId={formation.packageId} compact />
               </div>
             </div>
@@ -2394,7 +2387,7 @@ function PlaybookDetailsSheet({
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
       <form
-        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom"
+        className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom"
         onSubmit={(event) => {
           event.preventDefault()
           if (ready) onSave(name)
@@ -2406,7 +2399,7 @@ function PlaybookDetailsSheet({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
           >
             <X size={18} />
           </button>
@@ -2415,10 +2408,10 @@ function PlaybookDetailsSheet({
           value={name}
           onChange={(event) => setName(event.target.value)}
           aria-label="Playbook name"
-          className="mt-4 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+          className="mt-4 w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
         />
         <p className="mt-2 text-xs font-bold text-[#53665c]">Players and their labels live in the personnel packages, under Formations.</p>
-        <button type="submit" disabled={!ready} className="mt-4 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40">
+        <button type="submit" disabled={!ready} className="mt-4 w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40">
           Save Playbook
         </button>
 
@@ -2441,7 +2434,7 @@ function PlaybookDetailsSheet({
             <button
               type="button"
               onClick={() => setConfirming(true)}
-              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-[#c2412d] px-3 py-3 font-black text-[#c2412d]"
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-[#c2412d] px-3 py-2 font-black text-[#c2412d]"
             >
               <Trash2 size={16} />
               Delete Playbook
@@ -2477,7 +2470,7 @@ function PlayDetailSheet({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
           >
             <X size={18} />
           </button>
@@ -2496,7 +2489,7 @@ function PlayDetailSheet({
         {play.notes && <p className="mt-3 whitespace-pre-wrap text-sm font-bold text-[#53665c]">{play.notes}</p>}
 
         <div className="mt-3 space-y-2">
-          <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white">
+          <button type="button" onClick={onEdit} className="w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white">
             Edit Play
           </button>
           <SavePlayImageButton play={play} formation={formation} />
@@ -2552,7 +2545,7 @@ function PlayEditorSheet({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
           >
             <X size={18} />
           </button>
@@ -2564,7 +2557,7 @@ function PlayEditorSheet({
           onChange={(event) => setName(event.target.value)}
           placeholder="Play name"
           aria-label="Play name"
-          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
         />
 
         <p className="mt-3 text-xs font-black uppercase text-[#53665c]">Formation</p>
@@ -2572,7 +2565,7 @@ function PlayEditorSheet({
           value={formationId}
           onChange={(event) => setFormationId(event.target.value)}
           aria-label="Formation"
-          className="mt-1 w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-3 font-black outline-none"
+          className="mt-1 w-full rounded-lg border border-[#d8ded5] bg-white px-3 py-2 font-black outline-none"
         >
           {formations.map((item) => (
             <option key={item.id} value={item.id}>
@@ -2633,7 +2626,7 @@ function PlayEditorSheet({
               key={option}
               type="button"
               onClick={() => setType(option)}
-              className={`rounded-lg border px-3 py-3 font-black capitalize ${
+              className={`rounded-lg border px-3 py-2 font-black capitalize ${
                 type === option ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
               }`}
             >
@@ -2664,14 +2657,14 @@ function PlayEditorSheet({
           rows={3}
           placeholder="Routes, reads, when to call it"
           aria-label="Play notes"
-          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 text-sm outline-none focus:border-[#1f7a4d]"
+          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-2 text-sm outline-none focus:border-[#1f7a4d]"
         />
 
         <button
           type="button"
           onClick={submit}
           disabled={!name.trim() || !formationId}
-          className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40"
+          className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40"
         >
           Save Play
         </button>
@@ -2733,32 +2726,31 @@ function FormationEditorPage({
   }
 
   return (
-    <div className="space-y-4 py-5">
-      <button
-        type="button"
-        onClick={onClose}
-        className="-ml-2 flex items-center gap-1 rounded-lg px-2 py-1 text-sm font-black text-[#53665c] hover:bg-white"
-      >
-        <ChevronLeft size={16} />
-        {playbookName} formations
-      </button>
-
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="font-display text-3xl font-black">{formation ? 'Edit Formation' : 'New Formation'}</h1>
-          <p className="text-sm font-bold text-[#53665c]">Drag each player to where they line up.</p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] bg-white px-4 py-2 text-sm font-black">
+    <div className="space-y-2 py-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={`${playbookName} formations`}
+          title={`${playbookName} formations`}
+          className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#53665c] hover:bg-white"
+        >
+          <ChevronLeft size={18} />
+        </button>
+        <h1 className="font-display text-xl font-black">{formation ? 'Edit Formation' : 'New Formation'}</h1>
+        <p className="hidden text-xs font-bold text-[#53665c] sm:block">Drag each player to where they line up.</p>
+        <div className="ml-auto flex shrink-0 gap-1.5">
+          <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] bg-white px-2.5 py-1.5 text-sm font-black">
             Cancel
           </button>
-          <button type="button" onClick={save} className="rounded-lg bg-[#10201a] px-4 py-2 text-sm font-black text-white">
+          <button type="button" onClick={save} className="rounded-lg bg-[#10201a] px-2.5 py-1.5 text-sm font-black text-white">
             Save Formation
           </button>
         </div>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px] lg:items-start">
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-start">
+        <div className="mx-auto w-full" style={{ maxWidth: 'max(320px, calc((100vh - 130px) * 2))' }}>
         <PlaybookField
           positions={positions}
           packageId={packageId}
@@ -2766,8 +2758,9 @@ function FormationEditorPage({
           fullscreenOnLandscape
           large
         />
+        </div>
 
-        <aside className="space-y-4 rounded-xl border border-[#d8ded5] bg-white p-4 shadow-sm">
+        <aside className="space-y-3 rounded-lg border border-[#d8ded5] bg-white p-2.5">
           <label className="block">
             <span className="text-xs font-black uppercase text-[#53665c]">Name</span>
             <input
@@ -2775,7 +2768,7 @@ function FormationEditorPage({
               onChange={(event) => setName(event.target.value)}
               placeholder="e.g. Trips Right"
               aria-label="Formation name"
-              className="mt-1 w-full rounded-lg border border-[#d8ded5] px-3 py-2.5 outline-none focus:border-[#1f7a4d]"
+              className="mt-1 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 outline-none focus:border-[#1f7a4d]"
             />
           </label>
 
@@ -2983,40 +2976,35 @@ function GamedayPage({
   const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   return (
-    <div className="space-y-4 py-4 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:items-start lg:gap-5 lg:space-y-0">
-      <section className="rounded-lg border border-[#d8ded5] bg-[#10201a] p-4 text-white shadow-sm lg:col-span-2">
-        <p className="truncate text-xs font-black uppercase text-[#f7c948]">{gameName || 'Gameday'}</p>
-        <div className="mt-1 flex items-end justify-between gap-3">
-          <div>
-            <h2 className="font-display text-3xl font-black">{selectedDrive ? driveLabel(selectedDrive) : 'No Drive'}</h2>
-            <p className="text-sm font-bold text-white/70">
-              {gameSummary.completedDrives}/{gameDrives.length} complete · {availablePlayers.length} here
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-black uppercase text-[#f7c948]">Score</p>
-            <p className="font-display text-3xl font-black">{gameSummary.teamScore}-{gameSummary.opponentScore}</p>
-          </div>
+    <div className="space-y-2 py-2 lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start lg:gap-3 lg:space-y-0">
+      <section className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-[#10201a] px-3 py-2 text-white lg:col-span-2">
+        <div className="min-w-0">
+          <p className="truncate text-[10px] font-black uppercase leading-tight text-[#f7c948]">{gameName || 'Gameday'}</p>
+          <h2 className="font-display text-xl font-black leading-tight">{selectedDrive ? driveLabel(selectedDrive) : 'No Drive'}</h2>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <p className="text-xs font-bold text-white/70">
+          {gameSummary.completedDrives}/{gameDrives.length} complete · {availablePlayers.length} here
+        </p>
+        <div className="flex flex-wrap items-center gap-1.5">
           {nextOpenDrive && (
             <button
               type="button"
               onClick={() => setSelectedDriveId(nextOpenDrive.id)}
-              className="rounded-lg bg-white/10 px-3 py-2 text-sm font-black text-white ring-1 ring-white/20"
+              className="rounded-md bg-white/10 px-2 py-1 text-xs font-black text-white ring-1 ring-white/20"
             >
-              Jump to next open: {driveLabel(nextOpenDrive)}
+              Next open: {driveLabel(nextOpenDrive)}
             </button>
           )}
           <button
             type="button"
             onClick={() => setNamingGame(true)}
-            className="flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-sm font-black text-white ring-1 ring-white/20"
+            title="Starts a fresh scoresheet and carries your lineups over."
+            className="flex items-center gap-1 rounded-md bg-white/10 px-2 py-1 text-xs font-black text-white ring-1 ring-white/20"
           >
-            <RotateCcw size={15} />
+            <RotateCcw size={13} />
             New Game
           </button>
-          <div className="flex items-center gap-1 rounded-lg bg-white/10 p-1 ring-1 ring-white/20">
+          <div className="flex items-center gap-1 rounded-md bg-white/10 p-0.5 ring-1 ring-white/20">
             <span className="px-1.5 text-[10px] font-black uppercase text-white/60">Start on</span>
             {(['offense', 'defense'] as const).map((unit) => (
               <button
@@ -3033,7 +3021,12 @@ function GamedayPage({
             ))}
           </div>
         </div>
-        <p className="mt-2 text-xs font-bold text-white/60">New Game starts a fresh scoresheet and carries your lineups over.</p>
+        <div className="ml-auto text-right">
+          <p className="text-[10px] font-black uppercase leading-tight text-[#f7c948]">Score</p>
+          <p className="font-display text-xl font-black leading-tight">
+            {gameSummary.teamScore}-{gameSummary.opponentScore}
+          </p>
+        </div>
       </section>
 
       {namingGame && (
@@ -3047,20 +3040,20 @@ function GamedayPage({
         />
       )}
 
-      <section className="rounded-lg border border-[#d8ded5] bg-white p-3 shadow-sm lg:col-start-1 lg:row-span-3">
-        <div className="grid grid-cols-[44px_1fr_44px] items-center gap-2">
-          <button type="button" onClick={() => selectAdjacentDrive(-1)} disabled={selectedDriveIndex === 0} className="h-11 rounded-lg border border-[#d8ded5] disabled:opacity-30" aria-label="Previous drive">
+      <section className="rounded-lg border border-[#d8ded5] bg-white p-2.5 lg:col-start-1 lg:row-span-3">
+        <div className="grid grid-cols-[36px_1fr_36px] items-center gap-1.5">
+          <button type="button" onClick={() => selectAdjacentDrive(-1)} disabled={selectedDriveIndex === 0} className="h-9 rounded-lg border border-[#d8ded5] disabled:opacity-30" aria-label="Previous drive">
             <ChevronLeft className="mx-auto" size={20} />
           </button>
           <DriveScroller drives={gameDrives} selectedDriveId={selectedDrive?.id || ''} setSelectedDriveId={setSelectedDriveId} compact />
-          <button type="button" onClick={() => selectAdjacentDrive(1)} disabled={selectedDriveIndex >= gameDrives.length - 1} className="h-11 rounded-lg border border-[#d8ded5] disabled:opacity-30" aria-label="Next drive">
+          <button type="button" onClick={() => selectAdjacentDrive(1)} disabled={selectedDriveIndex >= gameDrives.length - 1} className="h-9 rounded-lg border border-[#d8ded5] disabled:opacity-30" aria-label="Next drive">
             <ChevronRight className="mx-auto" size={20} />
           </button>
         </div>
 
         {selectedDrive && selectedResolvedDrive && (
           <>
-            <div className="mt-3 flex items-center gap-2 overflow-x-auto pb-1">
+            <div className="mt-2 flex items-center gap-1.5 overflow-x-auto pb-1">
               <span className="shrink-0 text-xs font-black uppercase text-[#53665c]">Lineup</span>
               {getLineupsForUnit(lineups, selectedDrive.unit).map((lineup) => (
                 <button
@@ -3095,16 +3088,18 @@ function GamedayPage({
       </section>
 
       {selectedDrive && (
-        <section className="rounded-lg border border-[#d8ded5] bg-white p-3 shadow-sm lg:col-start-2">
-          <h2 className="font-display text-xl font-black">Drive Result</h2>
-          <p className="text-sm font-bold text-[#53665c]">{selectedDrive.result ? `${selectedDrive.result} recorded` : 'No result recorded'}</p>
-          <div className="mt-3 grid grid-cols-2 gap-2">
+        <section className="rounded-lg border border-[#d8ded5] bg-white p-2.5 lg:col-start-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="font-display text-base font-black">Drive Result</h2>
+            <p className="text-xs font-bold text-[#53665c]">{selectedDrive.result ? `${selectedDrive.result} recorded` : 'No result recorded'}</p>
+          </div>
+          <div className="mt-1.5 grid grid-cols-3 gap-1.5">
             {resultOptions.map((result) => (
               <button
                 key={result}
                 type="button"
                 onClick={() => recordDriveResult(result)}
-                className={`rounded-lg border px-3 py-3 text-left text-sm font-black ${
+                className={`rounded-lg border px-2 py-1 text-left text-sm font-black ${
                   selectedDrive.result === result ? 'border-[#10201a] bg-[#f7c948] text-[#10201a]' : 'border-[#d8ded5] bg-white'
                 }`}
               >
@@ -3114,17 +3109,17 @@ function GamedayPage({
           </div>
 
           {selectedDrive.result === 'TD' && (
-            <div className="mt-3 rounded-lg bg-[#f7f5ee] p-3">
+            <div className="mt-2 rounded-lg bg-[#f7f5ee] p-2">
               <p className="text-xs font-black uppercase text-[#53665c]">
                 After the touchdown{selectedDrive.unit === 'defense' ? ' (counts for them)' : ''}
               </p>
-              <div className="mt-2 grid grid-cols-3 gap-2">
+              <div className="mt-1.5 grid grid-cols-3 gap-1.5">
                 {conversionOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
                     onClick={() => setDriveConversion(option.value)}
-                    className={`rounded-lg border px-2 py-3 text-sm font-black ${
+                    className={`rounded-lg border px-2 py-1 text-sm font-black ${
                       (selectedDrive.conversion || '') === option.value
                         ? 'border-[#10201a] bg-[#1f7a4d] text-white'
                         : 'border-[#d8ded5] bg-white'
@@ -3139,14 +3134,14 @@ function GamedayPage({
           <textarea
             value={gameNoteDraft}
             onChange={(event) => updateDriveNote(event.target.value)}
-            className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 text-sm outline-none focus:border-[#1f7a4d]"
-            rows={3}
+            className="mt-2 w-full rounded-lg border border-[#d8ded5] px-2.5 py-1.5 text-sm outline-none focus:border-[#1f7a4d]"
+            rows={2}
             placeholder="Quick note"
           />
           <button
             type="button"
             onClick={() => recordDriveResult((selectedDrive.result || 'Stop') as Exclude<DriveResult, ''>, true)}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-[#10201a] px-3 py-4 font-black text-white"
+            className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-[#10201a] px-3 py-2 font-black text-white"
           >
             <Check size={18} />
             Save + Next
@@ -3154,27 +3149,27 @@ function GamedayPage({
         </section>
       )}
 
-      <section className="rounded-lg border border-[#d8ded5] bg-white p-3 shadow-sm lg:col-start-2">
-        <h2 className="font-display text-xl font-black">Drive Log</h2>
-        <div className="mt-3 space-y-2">
+      <section className="rounded-lg border border-[#d8ded5] bg-white p-2.5 lg:col-start-2">
+        <h2 className="font-display text-base font-black">Drive Log</h2>
+        <div className="mt-1.5 space-y-1">
           {gameDrives.map((drive) => (
             <button
               key={drive.id}
               type="button"
               onClick={() => setSelectedDriveId(drive.id)}
-              className={`grid w-full grid-cols-[72px_1fr_auto] items-center gap-2 rounded-lg border px-3 py-2 text-left ${
+              className={`grid w-full grid-cols-[56px_1fr_auto] items-center gap-2 rounded-md border px-2 py-1 text-left text-sm ${
                 selectedDrive?.id === drive.id ? 'border-[#10201a] bg-[#f7c948]/25' : 'border-[#d8ded5] bg-white'
               }`}
             >
               <span className="font-black">{driveLabel(drive)}</span>
               <span className="truncate text-sm font-bold text-[#53665c]">{drive.notes.freeform || 'No note'}</span>
-              <span className="rounded-full bg-[#f7f5ee] px-2 py-1 text-xs font-black text-[#53665c]">{shortResult(drive.result)}</span>
+              <span className="rounded-full bg-[#f7f5ee] px-1.5 py-0.5 text-[10px] font-black text-[#53665c]">{shortResult(drive.result)}</span>
             </button>
           ))}
         </div>
       </section>
 
-      <div className="flex flex-col items-center gap-1 pt-1 lg:col-span-2">
+      <div className="flex flex-col items-center gap-1 lg:col-span-2">
         <button
           type="button"
           onClick={() => setConfirmingDelete(true)}
@@ -3221,7 +3216,7 @@ function DeleteGameSheet({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
         <h3 className="font-display text-xl font-black">Delete {gameName || 'this game'}?</h3>
         <p className="mt-1 text-sm font-bold text-[#53665c]">
           This removes the game for good, along with its {driveCount} drive{driveCount === 1 ? '' : 's'}, results and
@@ -3231,13 +3226,13 @@ function DeleteGameSheet({
           Final score {teamScore}-{opponentScore}
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <button type="button" onClick={onCancel} className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-3 font-black text-white"
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white"
           >
             <Trash2 size={16} />
             Delete
@@ -3374,8 +3369,8 @@ function RosterRow({
           style={{ width: holding ? '100%' : '0%', transition: holding ? `width ${longPressDuration}ms linear` : 'none' }}
           className="absolute inset-y-0 left-0 bg-[#f7c948]/50"
         />
-        <div className="relative grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-3">
-          <p className="truncate font-black">{player.firstName}</p>
+        <div className="relative grid grid-cols-[1fr_auto] items-center gap-2 px-2.5 py-1">
+          <p className="truncate text-sm font-black">{player.firstName}</p>
           <p className="shrink-0 text-xs font-bold text-[#53665c]">
             {driveCount} drive{driveCount === 1 ? '' : 's'}
           </p>
@@ -3399,7 +3394,7 @@ function NewGameSheet({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
         <h3 className="font-display text-xl font-black">New Game</h3>
         <p className="mt-1 text-sm font-bold text-[#53665c]">
           Your lineups carry over. Results and notes start fresh, and this game is saved so you can open it again later.
@@ -3413,7 +3408,7 @@ function NewGameSheet({
             if (event.key === 'Escape') onClose()
           }}
           placeholder="Game name"
-          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-3 outline-none focus:border-[#1f7a4d]"
+          className="mt-3 w-full rounded-lg border border-[#d8ded5] px-3 py-2 outline-none focus:border-[#1f7a4d]"
         />
         <p className="mt-3 text-xs font-black uppercase text-[#53665c]">First drive</p>
         <div className="mt-1 grid grid-cols-2 gap-2">
@@ -3422,7 +3417,7 @@ function NewGameSheet({
               key={unit}
               type="button"
               onClick={() => setStartingUnit(unit)}
-              className={`rounded-lg border px-3 py-3 font-black capitalize ${
+              className={`rounded-lg border px-3 py-2 font-black capitalize ${
                 startingUnit === unit ? 'border-[#10201a] bg-[#f7c948]' : 'border-[#d8ded5] bg-white'
               }`}
             >
@@ -3431,13 +3426,13 @@ function NewGameSheet({
           ))}
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+          <button type="button" onClick={onClose} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
             Cancel
           </button>
           <button
             type="button"
             onClick={() => onCreate(name, startingUnit)}
-            className="rounded-lg bg-[#10201a] px-3 py-3 font-black text-white"
+            className="rounded-lg bg-[#10201a] px-3 py-2 font-black text-white"
           >
             Start Game
           </button>
@@ -3471,12 +3466,10 @@ function PlayingTimeTable({
   const restWindow = getRestWindowLineups(lineups)
 
   return (
-    <section className="space-y-3 border-t border-[#d8ded5] pt-4">
-      <div>
-        <h2 className="font-display text-xl font-black">Playing Time</h2>
-        <p className="text-sm font-bold text-[#53665c]">
-          The number by each name is how many of the first {restWindow.length} lineups they sit.
-        </p>
+    <section className="space-y-1.5 border-t border-[#d8ded5] pt-2">
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <h2 className="font-display text-base font-black">Playing Time</h2>
+        <p className="text-xs font-bold text-[#53665c]">Number by each name = lineups sat, of the first {restWindow.length}.</p>
       </div>
 
       <div className="overflow-x-auto">
@@ -3581,7 +3574,7 @@ function CopyLineupSheet({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
           >
             <X size={18} />
           </button>
@@ -3593,7 +3586,7 @@ function CopyLineupSheet({
               key={lineup.id}
               type="button"
               onClick={() => onCopy(lineup.id)}
-              className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 text-left"
+              className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 text-left"
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="font-black">{lineupLabel(lineup)}</span>
@@ -3627,7 +3620,7 @@ function LineupScroller({
           key={lineup.id}
           type="button"
           onClick={() => onSelect(lineup.id)}
-          className={`shrink-0 rounded-lg border px-3 py-2 text-sm font-black ${
+          className={`shrink-0 rounded-lg border px-2.5 py-1 text-sm font-black ${
             lineup.id === selectedLineupId
               ? 'border-[#10201a] bg-[#10201a] text-white'
               : 'border-[#d8ded5] bg-white text-[#10201a]'
@@ -3698,7 +3691,7 @@ function SlotPickerRow({
         }
         onSelect()
       }}
-      className={`relative w-full select-none overflow-hidden rounded-lg border px-3 py-3 text-left ${
+      className={`relative w-full select-none overflow-hidden rounded-lg border px-3 py-2 text-left ${
         isCurrent ? 'border-[#10201a] bg-[#f7c948]/30' : isBackup ? 'border-[#1f7a4d] bg-[#1f7a4d]/10' : 'border-[#d8ded5] bg-white'
       }`}
     >
@@ -3764,7 +3757,7 @@ function SlotPickerSheet({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
           >
             <X size={18} />
           </button>
@@ -3772,7 +3765,7 @@ function SlotPickerSheet({
 
         <div className="mt-3 max-h-[50vh] space-y-2 overflow-y-auto">
           {players.length === 0 && (
-            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
               Nobody on the list.
             </p>
           )}
@@ -3796,12 +3789,12 @@ function SlotPickerSheet({
 
         <div className="mt-3 grid gap-2">
           {backupPlayerId && (
-            <button type="button" onClick={() => onSetBackup(null)} className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+            <button type="button" onClick={() => onSetBackup(null)} className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
               Clear backup
             </button>
           )}
           {currentPlayerId && (
-            <button type="button" onClick={onClear} className="w-full rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+            <button type="button" onClick={onClear} className="w-full rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
               Leave {slot.shortName} open
             </button>
           )}
@@ -3822,20 +3815,20 @@ function DeletePlayerSheet({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+      <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
         <h3 className="font-display text-xl font-black">Delete {player.firstName}?</h3>
         <p className="mt-1 text-sm font-bold text-[#53665c]">
           Removes {player.firstName} from the team for good, including every lineup. If they are just missing today,
           swipe them off the list instead.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <button type="button" onClick={onCancel} className="rounded-lg border border-[#d8ded5] px-3 py-3 font-black">
+          <button type="button" onClick={onCancel} className="rounded-lg border border-[#d8ded5] px-3 py-2 font-black">
             Cancel
           </button>
           <button
             type="button"
             onClick={onConfirm}
-            className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-3 font-black text-white"
+            className="flex items-center justify-center gap-2 rounded-lg bg-[#c2412d] px-3 py-2 font-black text-white"
           >
             <Trash2 size={16} />
             Delete
@@ -3891,7 +3884,7 @@ function AddBackSheet({
         <button
           type="button"
           onClick={() => restorePlayers(players.map((player) => player.id))}
-          className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-3 font-black text-white"
+          className="mt-3 w-full rounded-lg bg-[#10201a] px-3 py-2 font-black text-white"
         >
           Add All
         </button>
@@ -4093,7 +4086,7 @@ function FormationBoard({
     <div className="relative">
       <div
         ref={fieldRef}
-        className="field-yardlines relative mt-3 aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field"
+        className="field-yardlines relative mx-auto mt-2 aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field lg:aspect-[16/9]"
         onPointerDown={handleFieldPointerDown}
         onPointerMove={handleFieldPointerMove}
         onPointerUp={handleFieldPointerUp}
@@ -4213,13 +4206,10 @@ function BenchPicker({
   setDraggingPlayerId: (id: string | null) => void
 }) {
   return (
-    <div className="mt-3 rounded-lg bg-[#f7f5ee] p-3">
-      <div className="flex items-center justify-between">
-        <p className="font-black">Bench</p>
-        <p className="text-xs font-black uppercase text-[#53665c]">Available</p>
-      </div>
-      <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
-        {benchPlayers.length === 0 && <p className="rounded-lg bg-white px-3 py-3 text-sm font-bold text-[#53665c]">No available bench players</p>}
+    <div className="mt-2 flex items-center gap-2 rounded-lg bg-[#f7f5ee] px-2 py-1.5">
+      <p className="shrink-0 text-xs font-black uppercase text-[#53665c]">Bench</p>
+      <div className="flex gap-1.5 overflow-x-auto">
+        {benchPlayers.length === 0 && <p className="px-1 text-sm font-bold text-[#53665c]">Nobody on the bench</p>}
         {benchPlayers.map((player) => (
           <button
             key={player.id}
@@ -4231,11 +4221,11 @@ function BenchPicker({
             }}
             onDragEnd={() => setDraggingPlayerId(null)}
             onClick={() => setSelectedPlayerId(selectedPlayerId === player.id ? null : player.id)}
-            className={`min-w-24 shrink-0 rounded-lg border px-3 py-3 text-left ${
+            className={`shrink-0 rounded-md border px-2.5 py-1 text-left ${
               selectedPlayerId === player.id ? 'border-[#10201a] bg-[#f7c948] text-[#10201a]' : 'border-[#d8ded5] bg-white'
             }`}
           >
-            <p className="font-black">{player.firstName}</p>
+            <p className="text-sm font-black">{player.firstName}</p>
           </button>
         ))}
       </div>

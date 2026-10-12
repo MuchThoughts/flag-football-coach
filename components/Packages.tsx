@@ -39,116 +39,113 @@ export function PackagesPanel({
     setSelected([])
   }
 
+  const smallButton = 'flex items-center gap-1 rounded-md px-2.5 py-1 text-sm font-black disabled:opacity-40'
+  const stepButton = 'flex h-7 w-7 items-center justify-center rounded-md border border-[#d8ded5] bg-white disabled:opacity-30'
+
   return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#d8ded5] bg-white px-3 py-2">
-        <div>
-          <p className="text-sm font-black">Players on the field</p>
-          <p className="text-xs font-bold text-[#53665c]">Every package in this playbook has this many players.</p>
-        </div>
+    <section className="space-y-2">
+      <div
+        className={`flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border px-2.5 py-1.5 ${
+          selecting || confirmingFewer ? 'border-[#c2412d] bg-[#fbeeeb]' : 'border-[#d8ded5] bg-white'
+        }`}
+      >
         {confirmingFewer ? (
-          <div className="flex flex-wrap items-center gap-2">
+          <>
+            <span className="text-sm font-bold">Remove player {playerCount} from every package and formation?</span>
+            <div className="ml-auto flex gap-1.5">
+              <button type="button" onClick={() => setConfirmingFewer(false)} className={`${smallButton} border border-[#d8ded5] bg-white`}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onPlayerCountChange(playerCount - 1)
+                  setConfirmingFewer(false)
+                }}
+                className={`${smallButton} bg-[#c2412d] text-white`}
+              >
+                Remove
+              </button>
+            </div>
+          </>
+        ) : selecting ? (
+          <>
             <span className="text-sm font-bold">
-              Remove player {playerCount} from every package and formation?
+              {selected.length === 0
+                ? 'Select the packages to delete.'
+                : deletingAll
+                  ? 'Keep at least one package.'
+                  : `${selected.length} selected.${
+                      movedFormations > 0
+                        ? ` ${movedFormations} formation${movedFormations === 1 ? '' : 's'} will move to the first remaining package.`
+                        : ''
+                    }`}
             </span>
-            <button type="button" onClick={() => setConfirmingFewer(false)} className="rounded-lg border border-[#d8ded5] px-3 py-1.5 text-sm font-black">
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onPlayerCountChange(playerCount - 1)
-                setConfirmingFewer(false)
-              }}
-              className="rounded-lg bg-[#c2412d] px-3 py-1.5 text-sm font-black text-white"
-            >
-              Remove
-            </button>
-          </div>
+            <div className="ml-auto flex gap-1.5">
+              <button type="button" onClick={stopSelecting} className={`${smallButton} border border-[#d8ded5] bg-white`}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={selected.length === 0 || deletingAll}
+                onClick={() => {
+                  onDelete(selected)
+                  stopSelecting()
+                }}
+                className={`${smallButton} bg-[#c2412d] text-white`}
+              >
+                <Trash2 size={14} />
+                Delete{selected.length > 0 ? ` ${selected.length}` : ''}
+              </button>
+            </div>
+          </>
         ) : (
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setConfirmingFewer(true)}
-              disabled={playerCount <= MIN_PLAYERS}
-              aria-label="Fewer players"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
-            >
-              <Minus size={16} />
-            </button>
-            <span className="w-9 text-center font-display text-xl font-black" aria-live="polite">
-              {playerCount}
-            </span>
-            <button
-              type="button"
-              onClick={() => onPlayerCountChange(playerCount + 1)}
-              disabled={playerCount >= MAX_PLAYERS}
-              aria-label="More players"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-[#d8ded5] disabled:opacity-30"
-            >
-              <Plus size={16} />
-            </button>
-          </div>
+          <>
+            <div className="flex items-center gap-1.5" title="Every package in this playbook has this many players">
+              <span className="text-sm font-black">Players</span>
+              <button
+                type="button"
+                onClick={() => setConfirmingFewer(true)}
+                disabled={playerCount <= MIN_PLAYERS}
+                aria-label="Fewer players"
+                className={stepButton}
+              >
+                <Minus size={14} />
+              </button>
+              <span className="w-6 text-center font-display text-lg font-black" aria-live="polite">
+                {playerCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => onPlayerCountChange(playerCount + 1)}
+                disabled={playerCount >= MAX_PLAYERS}
+                aria-label="More players"
+                className={stepButton}
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+            <span className="hidden text-xs font-bold text-[#53665c] md:inline">Changes save as you type.</span>
+            <div className="ml-auto flex gap-1.5">
+              <button type="button" onClick={onAdd} className={`${smallButton} bg-[#1f7a4d] text-white`}>
+                <Plus size={14} />
+                New Package
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelecting(true)}
+                disabled={packages.length <= 1}
+                className={`${smallButton} border border-[#d8ded5] bg-white text-[#c2412d]`}
+              >
+                <Trash2 size={14} />
+                Delete Packages
+              </button>
+            </div>
+          </>
         )}
       </div>
 
-      {selecting ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[#c2412d] bg-[#fbeeeb] px-3 py-2">
-          <p className="text-sm font-bold">
-            {selected.length === 0
-              ? 'Select the packages to delete.'
-              : deletingAll
-                ? 'Keep at least one package.'
-                : `${selected.length} selected.${
-                    movedFormations > 0
-                      ? ` ${movedFormations} formation${movedFormations === 1 ? '' : 's'} will move to the first remaining package.`
-                      : ''
-                  }`}
-          </p>
-          <div className="flex shrink-0 gap-2">
-            <button type="button" onClick={stopSelecting} className="rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black">
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={selected.length === 0 || deletingAll}
-              onClick={() => {
-                onDelete(selected)
-                stopSelecting()
-              }}
-              className="flex items-center gap-1.5 rounded-lg bg-[#c2412d] px-3 py-2 text-sm font-black text-white disabled:opacity-40"
-            >
-              <Trash2 size={15} />
-              Delete{selected.length > 0 ? ` ${selected.length}` : ''}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm font-bold text-[#53665c]">Who takes the field in each package. Changes save as you type.</p>
-          <div className="flex shrink-0 gap-2">
-            <button
-              type="button"
-              onClick={onAdd}
-              className="flex items-center gap-1.5 rounded-lg bg-[#1f7a4d] px-3 py-2 text-sm font-black text-white"
-            >
-              <Plus size={16} />
-              New Package
-            </button>
-            <button
-              type="button"
-              onClick={() => setSelecting(true)}
-              disabled={packages.length <= 1}
-              className="flex items-center gap-1.5 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-sm font-black text-[#c2412d] disabled:opacity-40"
-            >
-              <Trash2 size={15} />
-              Delete Packages
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {packages.map((item) => {
           const used = formations.filter((formation) => formation.packageId === item.id).length
           const checked = selected.includes(item.id)
@@ -159,7 +156,7 @@ export function PackagesPanel({
                 checked ? 'border-[#c2412d] ring-2 ring-[#c2412d]/30' : 'border-[#d8ded5]'
               }`}
             >
-              <div className="flex items-center gap-2 border-b border-[#d8ded5] bg-[#10201a] px-3 py-2">
+              <div className="flex items-center gap-2 bg-[#10201a] px-2.5 py-1">
                 {selecting && (
                   <input
                     type="checkbox"
@@ -174,15 +171,15 @@ export function PackagesPanel({
                   onChange={(event) => onChange({ ...item, name: event.target.value })}
                   placeholder="Package name"
                   aria-label="Package name"
-                  className="min-w-0 flex-1 rounded bg-transparent px-1 py-0.5 font-display text-lg font-black text-white outline-none placeholder:text-white/40 focus:bg-white/10"
+                  className="min-w-0 flex-1 rounded bg-transparent px-1 py-0.5 font-display text-base font-black text-white outline-none placeholder:text-white/40 focus:bg-white/10"
                 />
-                <span className="shrink-0 text-xs font-bold text-white/70">
+                <span className="shrink-0 text-[11px] font-bold text-white/70">
                   {used} formation{used === 1 ? '' : 's'}
                 </span>
               </div>
               <PositionRows positions={item.positions} onChange={(positions) => onChange({ ...item, positions })} />
               {!positionLabelsValid(item.positions) && (
-                <p className="border-t border-[#eef0ea] px-3 py-2 text-xs font-bold text-[#c2412d]">
+                <p className="border-t border-[#eef0ea] px-2.5 py-1 text-xs font-bold text-[#c2412d]">
                   Every position needs a name, and no two can match.
                 </p>
               )}

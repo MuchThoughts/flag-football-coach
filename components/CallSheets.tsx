@@ -65,7 +65,7 @@ export function CallSheetsSheet({
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+      <div className="max-h-[90vh] w-full max-w-md overflow-y-auto rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h3 className="font-display text-xl font-black">Call Sheets</h3>
@@ -75,7 +75,7 @@ export function CallSheetsSheet({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
           >
             <X size={18} />
           </button>
@@ -111,7 +111,7 @@ export function CallSheetsSheet({
 
         <div className="mt-4 space-y-2">
           {callSheets.length === 0 ? (
-            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-6 text-center text-sm font-bold text-[#53665c]">
+            <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
               No call sheets yet.
             </p>
           ) : (
@@ -120,7 +120,7 @@ export function CallSheetsSheet({
                 key={sheet.id}
                 type="button"
                 onClick={() => setOpenId(sheet.id)}
-                className="flex w-full items-center gap-3 rounded-lg border border-[#d8ded5] bg-white px-3 py-3 text-left hover:border-[#10201a]"
+                className="flex w-full items-center gap-3 rounded-lg border border-[#d8ded5] bg-white px-3 py-2 text-left hover:border-[#10201a]"
               >
                 <ClipboardList size={18} className="shrink-0 text-[#53665c]" />
                 <span className="min-w-0 flex-1">
@@ -303,7 +303,7 @@ function CallSheetEditor({
         <button
           type="button"
           onClick={() => update({ sections: [...sheet.sections, { id: uid('section'), title: 'New Section', playIds: [] }] })}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#b9c4b8] px-3 py-3 text-sm font-black text-[#53665c] hover:bg-white"
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-[#b9c4b8] px-3 py-2 text-sm font-black text-[#53665c] hover:bg-white"
         >
           <Plus size={16} />
           Add section
@@ -382,7 +382,7 @@ function PlayPicker({
   return (
     <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
       <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-lg border border-[#d8ded5] bg-white shadow-xl safe-bottom">
-        <div className="flex items-center justify-between gap-3 border-b border-[#eef0ea] p-4">
+        <div className="flex items-center justify-between gap-3 border-b border-[#eef0ea] p-3">
           <div className="min-w-0">
             <h3 className="truncate font-display text-xl font-black">{title || 'Section'}</h3>
             <p className="text-sm font-bold text-[#53665c]">{selectedIds.length} selected</p>
@@ -429,7 +429,7 @@ function PlayPicker({
             )
           })}
           {visible.length === 0 && (
-            <p className="px-3 py-6 text-center text-sm font-bold text-[#53665c]">No plays match that.</p>
+            <p className="px-3 py-3 text-center text-sm font-bold text-[#53665c]">No plays match that.</p>
           )}
         </div>
       </div>
@@ -461,7 +461,7 @@ function PrintCallSheet({
   return (
     <>
       <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 px-3 pb-3 sm:items-center">
-        <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-4 shadow-xl safe-bottom">
+        <div className="w-full max-w-md rounded-lg border border-[#d8ded5] bg-white p-3 shadow-xl safe-bottom">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <h3 className="font-display text-xl font-black">Print Call Sheet</h3>
@@ -473,7 +473,7 @@ function PrintCallSheet({
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[#d8ded5]"
             >
               <X size={18} />
             </button>
@@ -501,7 +501,7 @@ function PrintCallSheet({
             type="button"
             disabled={total === 0}
             onClick={() => window.print()}
-            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#10201a] px-3 py-3 font-black text-white disabled:opacity-40"
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[#10201a] px-3 py-2 font-black text-white disabled:opacity-40"
           >
             <Printer size={16} />
             Print or Save PDF

@@ -45,8 +45,8 @@ export default function UpdateBanner() {
   if (!outdated) return null
 
   return (
-    <div className="sticky top-14 z-30 bg-[#f7c948] text-[#10201a] shadow">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 py-2 sm:px-6">
+    <div className="sticky top-12 z-30 bg-[#f7c948] text-[#10201a] shadow">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-3 py-1.5 sm:px-6">
         <p className="text-sm font-black">A new version of Flag Coach is ready.</p>
         <button
           type="button"

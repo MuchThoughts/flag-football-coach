@@ -32,21 +32,21 @@ export function PositionRows({
     <table className="w-full border-collapse text-sm">
       <thead>
         <tr className="whitespace-nowrap text-left text-[11px] font-black uppercase text-[#53665c]">
-          <th className="w-10 py-1.5 pl-3 font-black">#</th>
-          <th className="w-28 py-1.5 pr-2 font-black">Position Type</th>
-          <th className="py-1.5 pr-3 font-black">Position Name</th>
+          <th className="w-8 py-1 pl-2.5 font-black">#</th>
+          <th className="w-24 py-1 pr-1.5 font-black">Position Type</th>
+          <th className="py-1 pr-2.5 font-black">Position Name</th>
         </tr>
       </thead>
       <tbody>
         {positions.map((position, index) => (
           <tr key={position.code} className="border-t border-[#eef0ea]">
-            <td className="py-1.5 pl-3 font-display text-base font-black text-[#53665c]">{index + 1}</td>
-            <td className="py-1.5 pr-2">
+            <td className="py-0.5 pl-2.5 font-display text-sm font-black text-[#53665c]">{index + 1}</td>
+            <td className="py-0.5 pr-1.5">
               <select
                 value={position.type}
                 onChange={(event) => update(position.code, { type: event.target.value as PositionType })}
                 aria-label={`Position type for player ${index + 1}`}
-                className="w-full rounded-md border border-[#d8ded5] bg-white px-2 py-1.5 font-black outline-none focus:border-[#1f7a4d]"
+                className="w-full rounded border border-[#d8ded5] bg-white px-1.5 py-0.5 text-sm font-black outline-none focus:border-[#1f7a4d]"
               >
                 {POSITION_TYPES.map((type) => (
                   <option key={type} value={type}>
@@ -55,13 +55,13 @@ export function PositionRows({
                 ))}
               </select>
             </td>
-            <td className="py-1.5 pr-3">
+            <td className="py-0.5 pr-2.5">
               <input
                 value={position.label}
                 maxLength={POSITION_LABEL_LENGTH}
                 onChange={(event) => update(position.code, { label: event.target.value })}
                 aria-label={`Position name for player ${index + 1}`}
-                className={`w-full rounded-md border px-2 py-1.5 font-black outline-none focus:border-[#1f7a4d] ${
+                className={`w-full rounded border px-1.5 py-0.5 text-sm font-black outline-none focus:border-[#1f7a4d] ${
                   clash(position.label) ? 'border-[#c2412d] bg-[#fbeeeb]' : 'border-[#d8ded5]'
                 }`}
               />

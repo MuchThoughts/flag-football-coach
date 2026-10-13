@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Maximize, Minus, Plus, Trash2 } from 'lucide-react'
+import { Maximize, Minus, Plus, Trash2, X } from 'lucide-react'
 import {
   bendThrough,
   DEFAULT_VIEW,
@@ -28,9 +28,11 @@ import {
   toWorld,
   viewBox,
   zoomAround,
-  clampView
+  clampView,
+  defenderMark,
+  newDefenderSpot
 } from '@/lib/play-lines'
-import type { FieldPoint, PlayLine, PlayLineKind, PlaybookPosition, PlayFootball, PlayRoute, PlayView, SlotPositions } from '@/lib/types'
+import type { FieldPoint, PlayDefender, PlayLine, PlayLineKind, PlaybookPosition, PlayFootball, PlayRoute, PlayView, SlotPositions } from '@/lib/types'
 
 /** Pointer travel, in screen pixels, before a press counts as a drag. */
 const dragSlop = 5
@@ -45,6 +47,7 @@ type Drag =
   | { kind: 'point'; lineId: string; index: number }
   | { kind: 'bend'; lineId: string; segment: number }
   | { kind: 'segment'; lineId: string; segment: number; startX: number; startY: number; point: FieldPoint }
+  | { kind: 'defender'; id: string; startX: number; startY: number; moved: boolean }
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -71,6 +74,7 @@ function capturePointer(element: Element, pointerId: number) {
  * - After a motion or a handoff, the selected line's menu adds what the player does next.
  * - Double-click or hold on a line to add a pivot there; double-click a pivot to remove it.
  * - Drag the yellow dot in the middle of a segment to curve it.
+ * - Add Defender drops a black X on the defense's side; drag it into place, tap it to delete.
  */
 export default function PlayCanvas({
   players,
@@ -80,6 +84,8 @@ export default function PlayCanvas({
   onLinesChange,
   view,
   onViewChange,
+  defenders = [],
+  onDefendersChange,
   legacyRoutes = [],
   legacyFootballs = []
 }: {
@@ -91,6 +97,8 @@ export default function PlayCanvas({
   onLinesChange: (lines: PlayLine[]) => void
   view: PlayView
   onViewChange: (view: PlayView) => void
+  defenders?: PlayDefender[]
+  onDefendersChange?: (defenders: PlayDefender[]) => void
   legacyRoutes?: PlayRoute[]
   legacyFootballs?: PlayFootball[]
 }) {
@@ -104,11 +112,20 @@ export default function PlayCanvas({
   viewRef.current = view
   const [selectedPlayer, setSelectedPlayer] = useState<string | null>(null)
   const [selectedLine, setSelectedLine] = useState<string | null>(null)
+  const [selectedDefender, setSelectedDefender] = useState<string | null>(null)
 
   const box = viewBox(view)
   const scale = frameScale(view)
   const selected = lines.find((item) => item.id === selectedLine)
   const player = players.find((item) => item.code === selectedPlayer)
+  const defender = defenders.find((item) => item.id === selectedDefender)
+
+  /** Only one thing is selected at a time: a player, a line or a defender. */
+  function select(next: { player?: string; line?: string; defender?: string }) {
+    setSelectedPlayer(next.player ?? null)
+    setSelectedLine(next.line ?? null)
+    setSelectedDefender(next.defender ?? null)
+  }
 
   function toField(clientX: number, clientY: number): FieldPoint {
     const svg = svgRef.current
@@ -138,8 +155,7 @@ export default function PlayCanvas({
 
   function addPivot(lineId: string, segment: number, point: FieldPoint) {
     updateLine(lineId, (line) => insertPivot(line, segment, point))
-    setSelectedLine(lineId)
-    setSelectedPlayer(null)
+    select({ line: lineId })
   }
 
   function startPan(clientX: number, clientY: number, moved: boolean): Drag {
@@ -195,6 +211,7 @@ export default function PlayCanvas({
     const bend = target.closest('[data-bend]')?.getAttribute('data-bend')
     const segment = target.closest('[data-seg]')?.getAttribute('data-seg')
     const code = target.closest('[data-player]')?.getAttribute('data-player')
+    const defenderId = target.closest('[data-defender]')?.getAttribute('data-defender')
 
     // Pointer capture sends the browser's own double-click to the field, so spot them here.
     const key = point ? `point:${point}` : bend ? `seg:${bend}` : segment ? `seg:${segment}` : ''
@@ -215,10 +232,14 @@ export default function PlayCanvas({
     }
     lastTapRef.current = key ? { key, at: now, x: event.clientX, y: event.clientY } : null
 
+    if (defenderId) {
+      select({ defender: defenderId })
+      dragRef.current = { kind: 'defender', id: defenderId, startX: event.clientX, startY: event.clientY, moved: false }
+      return
+    }
     if (point) {
       const [lineId, index] = point.split('|')
-      setSelectedLine(lineId)
-      setSelectedPlayer(null)
+      select({ line: lineId })
       dragRef.current = { kind: 'point', lineId, index: Number(index) }
       return
     }
@@ -230,8 +251,7 @@ export default function PlayCanvas({
     if (segment) {
       const [lineId, index] = segment.split('|')
       const at = toField(event.clientX, event.clientY)
-      setSelectedLine(lineId)
-      setSelectedPlayer(null)
+      select({ line: lineId })
       dragRef.current = { kind: 'segment', lineId, segment: Number(index), startX: event.clientX, startY: event.clientY, point: at }
       cancelPress()
       // Holding on a line drops a pivot there.
@@ -244,8 +264,7 @@ export default function PlayCanvas({
       return
     }
     if (code) {
-      setSelectedPlayer(code)
-      setSelectedLine(null)
+      select({ player: code })
       dragRef.current = null
       return
     }
@@ -271,6 +290,14 @@ export default function PlayCanvas({
       if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < dragSlop) return
       cancelPress()
       dragRef.current = startPan(drag.startX, drag.startY, true)
+      return
+    }
+
+    if (drag.kind === 'defender') {
+      if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < dragSlop) return
+      drag.moved = true
+      const at = toField(event.clientX, event.clientY)
+      onDefendersChange?.(defenders.map((item) => (item.id === drag.id ? { ...item, x: at.x, y: at.y } : item)))
       return
     }
 
@@ -311,10 +338,7 @@ export default function PlayCanvas({
     const drag = dragRef.current
     dragRef.current = null
     // A tap on empty grass lets go of whatever was selected.
-    if (drag?.kind === 'pan' && !drag.moved) {
-      setSelectedLine(null)
-      setSelectedPlayer(null)
-    }
+    if (drag?.kind === 'pan' && !drag.moved) select({})
   }
 
   /** Double-clicking a line adds a pivot there; double-clicking a pivot takes it out. */
@@ -329,13 +353,11 @@ export default function PlayCanvas({
   }
 
   function handleKeyDown(event: React.KeyboardEvent) {
-    if (event.key === 'Escape') {
-      setSelectedLine(null)
-      setSelectedPlayer(null)
-    }
-    if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLine) {
+    if (event.key === 'Escape') select({})
+    if ((event.key === 'Delete' || event.key === 'Backspace') && (selectedLine || selectedDefender)) {
       event.preventDefault()
-      deleteLine(selectedLine)
+      if (selectedLine) deleteLine(selectedLine)
+      if (selectedDefender) deleteDefender(selectedDefender)
     }
   }
 
@@ -354,8 +376,7 @@ export default function PlayCanvas({
     const end = kind === 'handoff' || kind === 'fakeHandoff' ? handoffEnd(code, start) : undefined
     const line = newLine(uid('line'), kind, code, start, { end, from })
     onLinesChange([...lines, line])
-    setSelectedLine(line.id)
-    setSelectedPlayer(null)
+    select({ line: line.id })
   }
 
   function addLine(kind: PlayLineKind) {
@@ -374,6 +395,19 @@ export default function PlayCanvas({
   function deleteLine(lineId: string) {
     onLinesChange(removeLine(lines, lineId))
     setSelectedLine(null)
+  }
+
+  function addDefender() {
+    if (!onDefendersChange) return
+    const spot = newDefenderSpot(defenders, view, scrimmage)
+    const added = { id: uid('defender'), ...spot }
+    onDefendersChange([...defenders, added])
+    select({ defender: added.id })
+  }
+
+  function deleteDefender(id: string) {
+    onDefendersChange?.(defenders.filter((item) => item.id !== id))
+    setSelectedDefender(null)
   }
 
   function changeKind(kind: PlayLineKind) {
@@ -517,6 +551,17 @@ export default function PlayCanvas({
             <ellipse key={ball.id} cx={ball.x * 2} cy={ball.y} rx={3.6} ry={2.3} fill="#8a4b23" stroke="#2f1b0d" strokeWidth={0.5} style={{ pointerEvents: 'none' }} />
           ))}
 
+          {defenders.map((item) => {
+            const { x, y } = toWorld(item)
+            return (
+              <g key={item.id} data-defender={item.id} style={{ cursor: 'move' }}>
+                {item.id === selectedDefender && <circle cx={x} cy={y} r={5.4} fill="none" stroke="#f7c948" strokeWidth={1.4} />}
+                <circle cx={x} cy={y} r={4.2} fill="transparent" />
+                <g style={{ pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: defenderMark(item, { halo: true }) }} />
+              </g>
+            )
+          })}
+
           {/* Handles for the selected line: pivots and its end, and a curve dot on every segment. */}
           {selected &&
             (() => {
@@ -564,6 +609,19 @@ export default function PlayCanvas({
             })()}
         </svg>
 
+        {onDefendersChange && (
+          <button
+            type="button"
+            onClick={addDefender}
+            aria-label="Add Defender"
+            title="Add a defender, then drag them into place"
+            className="absolute left-1.5 top-1.5 z-10 flex h-7 items-center gap-1 rounded-md bg-black/45 px-2 text-xs font-black text-white hover:bg-black/60"
+          >
+            <X size={14} strokeWidth={3} />
+            <span className="hidden sm:inline">Add</span> Defender
+          </button>
+        )}
+
         <div className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1">
           <button type="button" onClick={() => onViewChange(zoomAround(view, 1 / 1.25, { x: view.x, y: view.y }))} aria-label="Zoom out" className={zoomButton}>
             <Minus size={14} />
@@ -579,7 +637,18 @@ export default function PlayCanvas({
 
       </div>
 
-        {player || selected ? (
+        {defender ? (
+          <div className="flex justify-center">
+            <div className="flex items-center gap-1 rounded-lg bg-[#10201a] p-1 text-white">
+              <span className="px-1.5 text-xs font-black text-[#f7c948]">Defender</span>
+              <button type="button" onClick={() => deleteDefender(defender.id)} aria-label="Delete defender" className={`${menuButton} flex items-center gap-1 text-[#f0a090] hover:bg-white/10`}>
+                <Trash2 size={12} />
+                Delete
+              </button>
+              <span className="hidden px-1 text-[10px] font-bold text-white/60 sm:inline">Drag to move</span>
+            </div>
+          </div>
+        ) : player || selected ? (
           <div className="flex justify-center">
             <div className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-lg bg-[#10201a] p-1 text-white">
               {player && (

@@ -1,6 +1,6 @@
 import { DEFAULT_POSITIONS, placeAll } from './playbook'
 import { LINE_OF_SCRIMMAGE } from './positions'
-import { endTrim, frameScale, HALO, lineEnd, LINE_STYLES, lineStart, pathData, playLines, viewBox, viewOrDefault } from './play-lines'
+import { defenderMark, endTrim, frameScale, HALO, lineEnd, validDefenders, LINE_STYLES, lineStart, pathData, playLines, viewBox, viewOrDefault } from './play-lines'
 import type { Formation, PlaybookPlay, PlaybookPosition } from './types'
 
 /**
@@ -67,7 +67,7 @@ function football(point: { x: number; y: number }) {
 const reach = { x: -500, y: -400, w: 1200, h: 900 }
 
 export function playDiagramSvg(
-  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion'>>,
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion' | 'defenders'>>,
   formation: Formation | undefined,
   positions: PlaybookPosition[] = DEFAULT_POSITIONS,
   theme: PlayDiagramTheme = 'paper',
@@ -143,6 +143,9 @@ export function playDiagramSvg(
           (labels ? `<text x="${x}" y="${y}" dy="0.36em" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-weight="900" font-size="${fontSizeFor(slot.label)}" fill="${colors.markerText}" fill-opacity="0.75">${escapeXml(slot.label)}</text>` : '')
       )
     })
+
+  // Black on turf needs a pale edge to read.
+  validDefenders(play.defenders).forEach((item) => parts.push(defenderMark(item, { halo: theme === 'turf' })))
 
   play.footballs.forEach((item) => parts.push(football(item)))
 

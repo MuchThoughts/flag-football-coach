@@ -149,6 +149,9 @@ the play's name, formation, pass or run, area, notes and call.
   yellow dot in the middle of a segment to curve it. Tap the grass to let go;
   Delete removes the selected line (anything after it then starts from where
   it started), and the menu under the field can change its type.
+- **Defenders:** **Add Defender**, top left of the field, drops a black X
+  across the line. Drag it where the defender lines up; tap it for **Delete**.
+  Defenders save with the play and show in its picture and printouts.
 - **Image** at the top saves the play as a picture, at the view on screen.
 
 ## Call sheets

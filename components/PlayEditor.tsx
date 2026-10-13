@@ -9,8 +9,8 @@ import { usePositions } from '@/components/PositionsContext'
 import { lineOf } from '@/lib/formation-edit'
 import { PLAY_AREAS, PLAY_TYPES, placeAll } from '@/lib/playbook'
 import { classifySteps, playCallFromSteps, stepsFromPlay } from '@/lib/play-builder'
-import { LINE_VERSION, playLines, RUN_BLUE, viewOrDefault } from '@/lib/play-lines'
-import type { Formation, PlayArea, PlaybookPlay, PlayLine, PlayStep, PlayType, PlayView } from '@/lib/types'
+import { LINE_VERSION, playLines, RUN_BLUE, validDefenders, viewOrDefault } from '@/lib/play-lines'
+import type { Formation, PlayArea, PlaybookPlay, PlayDefender, PlayLine, PlayStep, PlayType, PlayView } from '@/lib/types'
 
 /** A play as the editor hands it over; the app fills in team, playbook and dates. */
 export type PlayEditorDraft = Omit<PlaybookPlay, 'teamId' | 'playbookId' | 'createdAt' | 'updatedAt'>
@@ -58,6 +58,7 @@ export default function PlayEditorPage({
   const [notes, setNotes] = useState(play?.notes || '')
   const [lines, setLines] = useState<PlayLine[]>(() => (play ? playLines(play) : []))
   const [view, setView] = useState<PlayView>(() => viewOrDefault(play?.view))
+  const [defenders, setDefenders] = useState<PlayDefender[]>(() => validDefenders(play?.defenders))
   // Lines from the old freehand tool still show until the coach clears them.
   const [legacyRoutes, setLegacyRoutes] = useState(play?.routes || [])
   const [legacyFootballs, setLegacyFootballs] = useState(play?.footballs || [])
@@ -96,7 +97,8 @@ export default function PlayEditorPage({
       steps,
       lines,
       lineVersion: LINE_VERSION,
-      view
+      view,
+      defenders
     }
   }
 
@@ -195,6 +197,8 @@ export default function PlayEditorPage({
               onLinesChange={setLines}
               view={view}
               onViewChange={setView}
+              defenders={defenders}
+              onDefendersChange={setDefenders}
               legacyRoutes={legacyRoutes}
               legacyFootballs={legacyFootballs}
             />

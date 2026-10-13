@@ -1,4 +1,4 @@
-import type { FieldPoint, PlayLine, PlayLineKind, PlayView, SlotPositions } from './types'
+import type { FieldPoint, PlayDefender, PlayLine, PlayLineKind, PlayView, SlotPositions } from './types'
 
 /**
  * Geometry for drawn plays, shared by the editor and every export so a play
@@ -367,4 +367,35 @@ export function normalizeLine(line: PlayLine): PlayLine {
   const points = Array.isArray(line.points) ? line.points.filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y)) : []
   const bends = points.map((_, index) => (Array.isArray(line.bends) ? line.bends[index] || null : null))
   return { ...line, points, bends }
+}
+
+/** A defender as SVG markup in world units: a bold black X, sized with the players. */
+export function defenderMark(point: FieldPoint, { halo = false }: { halo?: boolean } = {}) {
+  const { x, y } = toWorld(point)
+  const arm = 3
+  const d = `M${round(x - arm)},${round(y - arm)} L${round(x + arm)},${round(y + arm)} M${round(x - arm)},${round(y + arm)} L${round(x + arm)},${round(y - arm)}`
+  const edge = halo ? `<path d="${d}" stroke="${HALO}" stroke-width="3" stroke-linecap="round" fill="none"/>` : ''
+  return `${edge}<path d="${d}" stroke="#000000" stroke-width="1.8" stroke-linecap="round" fill="none"/>`
+}
+
+/** Saved defenders, with anything damaged left out. */
+export function validDefenders(defenders?: PlayDefender[]): PlayDefender[] {
+  return (defenders || []).filter((item) => item && typeof item.id === 'string' && Number.isFinite(item.x) && Number.isFinite(item.y))
+}
+
+/**
+ * Where a new defender goes: across the line from the offense, in the middle
+ * of what is on screen, stepping aside from any defender already there.
+ */
+export function newDefenderSpot(defenders: PlayDefender[], view: PlayView, scrimmage: number): FieldPoint {
+  const box = viewBox(view)
+  const y = round(clamp(scrimmage - 8, box.y + 4, box.y + box.h - 4))
+  const middle = round(clamp(view.x, box.x / 2 + 3, (box.x + box.w) / 2 - 3))
+  const taken = (x: number) => defenders.some((item) => Math.abs(item.x - x) < 3 && Math.abs(item.y - y) < 3)
+  // Try the middle, then a step right, a step left, two right, and so on.
+  for (let step = 0; step < 21; step += 1) {
+    const x = round(middle + (step % 2 === 1 ? 1 : -1) * 6 * Math.ceil(step / 2))
+    if (!taken(x)) return { x, y }
+  }
+  return { x: middle, y }
 }

@@ -13,7 +13,7 @@ export function PlayDiagram({
   theme = 'paper',
   labels = true
 }: {
-  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion'>>
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion' | 'defenders'>>
   formation?: Formation
   theme?: PlayDiagramTheme
   labels?: boolean

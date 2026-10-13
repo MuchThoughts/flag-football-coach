@@ -16,6 +16,9 @@ import { playDiagramSvg, playFileName } from '../lib/play-svg'
 import {
   bendThrough,
   DEFAULT_VIEW,
+  defenderMark,
+  newDefenderSpot,
+  validDefenders,
   endTrim,
   followers,
   handoffSpot,
@@ -1376,6 +1379,17 @@ assert.equal(roundTripFailures, 0)
   // On turf, the run, the handoff and its X get a pale edge.
   const turf = playDiagramSvg(drawnPlay, formation, undefined, 'turf')
   assert.equal((turf.match(/<path /g) || []).length, 12)
+
+  // Defenders: a black X across the line, stepping aside from one already there, drawn in exports.
+  const firstSpot = newDefenderSpot([], DEFAULT_VIEW, 52)
+  assert.deepEqual(firstSpot, { x: 50, y: 44 })
+  const secondSpot = newDefenderSpot([{ id: 'd1', ...firstSpot }], DEFAULT_VIEW, 52)
+  assert.deepEqual(secondSpot, { x: 56, y: 44 })
+  assert.deepEqual(newDefenderSpot([{ id: 'd1', ...firstSpot }, { id: 'd2', ...secondSpot }], DEFAULT_VIEW, 52), { x: 44, y: 44 })
+  assert.equal(validDefenders([{ id: 'd', x: 1, y: 2 }, { id: 'bad', x: NaN, y: 2 }, null as unknown as { id: string; x: number; y: number }]).length, 1)
+  assert.ok(defenderMark({ x: 50, y: 44 }).includes('stroke="#000000"'))
+  const defended = playDiagramSvg({ ...drawnPlay, defenders: [{ id: 'd1', ...firstSpot }, { id: 'd2', ...secondSpot }] }, formation)
+  assert.equal((defended.match(/stroke="#000000"/g) || []).length, 2)
 }
 
 console.log('logic tests passed')

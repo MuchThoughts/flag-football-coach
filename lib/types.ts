@@ -254,6 +254,13 @@ export interface PlayLine {
   fromLineId?: string
 }
 
+/** A defender drawn on a play, as a black X. Field percent. */
+export interface PlayDefender {
+  id: string
+  x: number
+  y: number
+}
+
 /** The part of the field a play is shown at: a centre in field percent, and how far in. */
 export interface PlayView {
   x: number
@@ -278,6 +285,8 @@ export interface PlaybookPlay {
   lines?: PlayLine[]
   /** How far in and where the play is shown, here and when exported. */
   view?: PlayView
+  /** Defenders placed on the play, to show what it is drawn up against. */
+  defenders?: PlayDefender[]
   /**
    * 2 once the lines say what they follow. Before that, every line a player
    * had after a motion started where the motion ended.

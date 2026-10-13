@@ -555,8 +555,8 @@ export default function PlayCanvas({
             const { x, y } = toWorld(item)
             return (
               <g key={item.id} data-defender={item.id} style={{ cursor: 'move' }}>
-                {item.id === selectedDefender && <circle cx={x} cy={y} r={5.4} fill="none" stroke="#f7c948" strokeWidth={1.4} />}
-                <circle cx={x} cy={y} r={4.2} fill="transparent" />
+                {item.id === selectedDefender && <circle cx={x} cy={y} r={4.6} fill="none" stroke="#f7c948" strokeWidth={1.2} />}
+                <circle cx={x} cy={y} r={3.6} fill="transparent" />
                 <g style={{ pointerEvents: 'none' }} dangerouslySetInnerHTML={{ __html: defenderMark(item, { halo: true }) }} />
               </g>
             )

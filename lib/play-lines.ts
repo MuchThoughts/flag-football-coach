@@ -372,10 +372,10 @@ export function normalizeLine(line: PlayLine): PlayLine {
 /** A defender as SVG markup in world units: a bold black X, sized with the players. */
 export function defenderMark(point: FieldPoint, { halo = false }: { halo?: boolean } = {}) {
   const { x, y } = toWorld(point)
-  const arm = 3
+  const arm = 2.55
   const d = `M${round(x - arm)},${round(y - arm)} L${round(x + arm)},${round(y + arm)} M${round(x - arm)},${round(y + arm)} L${round(x + arm)},${round(y - arm)}`
-  const edge = halo ? `<path d="${d}" stroke="${HALO}" stroke-width="3" stroke-linecap="round" fill="none"/>` : ''
-  return `${edge}<path d="${d}" stroke="#000000" stroke-width="1.8" stroke-linecap="round" fill="none"/>`
+  const edge = halo ? `<path d="${d}" stroke="${HALO}" stroke-width="2.55" stroke-linecap="round" fill="none"/>` : ''
+  return `${edge}<path d="${d}" stroke="#000000" stroke-width="1.53" stroke-linecap="round" fill="none"/>`
 }
 
 /** Saved defenders, with anything damaged left out. */

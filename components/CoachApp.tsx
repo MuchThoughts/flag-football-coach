@@ -1412,7 +1412,7 @@ function PlayListRow({ play, onOpen }: { play: PlaybookPlay; onOpen: () => void 
       >
         {play.type}
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm font-black">{play.name}</span>
+      <span className="min-w-0 flex-1 break-words text-sm font-black leading-tight">{play.name}</span>
       <span className="shrink-0 text-[11px] font-bold capitalize text-[#53665c]">{play.area}</span>
     </button>
   )

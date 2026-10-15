@@ -87,7 +87,8 @@ export default function PlayCanvas({
   defenders = [],
   onDefendersChange,
   legacyRoutes = [],
-  legacyFootballs = []
+  legacyFootballs = [],
+  fullscreen = false
 }: {
   players: PlaybookPosition[]
   spots: SlotPositions
@@ -101,6 +102,8 @@ export default function PlayCanvas({
   onDefendersChange?: (defenders: PlayDefender[]) => void
   legacyRoutes?: PlayRoute[]
   legacyFootballs?: PlayFootball[]
+  /** The field fills the screen, as on a phone turned sideways: no frame, and the menu sits over its foot. */
+  fullscreen?: boolean
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null)
   const dragRef = useRef<Drag | null>(null)
@@ -421,10 +424,81 @@ export default function PlayCanvas({
   const menuButton = 'rounded-md px-2.5 py-1 text-xs font-black'
   const zoomButton = 'flex h-7 w-7 items-center justify-center rounded-md bg-black/45 text-white hover:bg-black/60'
 
+  // What can be done with whatever is selected: under the field, or over its foot when the field fills the screen.
+  const menu = defender ? (
+          <div className="flex justify-center">
+            <div className="flex items-center gap-1 rounded-lg bg-[#10201a] p-1 text-white">
+              <span className="px-1.5 text-xs font-black text-[#f7c948]">Defender</span>
+              <button type="button" onClick={() => deleteDefender(defender.id)} aria-label="Delete defender" className={`${menuButton} flex items-center gap-1 text-[#f0a090] hover:bg-white/10`}>
+                <Trash2 size={12} />
+                Delete
+              </button>
+              <span className="hidden px-1 text-[10px] font-bold text-white/60 sm:inline">Drag to move</span>
+            </div>
+          </div>
+        ) : player || selected ? (
+          <div className="flex justify-center">
+            <div className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-lg bg-[#10201a] p-1 text-white">
+              {player && (
+                <>
+                  <span className="px-1.5 text-xs font-black text-[#f7c948]">{player.label}</span>
+                  {LINE_KINDS.map((kind) => (
+                    <KindButton key={kind} kind={kind} onClick={() => addLine(kind)} />
+                  ))}
+                  {playerLines.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onLinesChange(lines.filter((item) => item.playerCode !== selectedPlayer))}
+                      className={`${menuButton} text-[#f0a090] hover:bg-white/10`}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </>
+              )}
+              {selected && (
+                <>
+                  <select
+                    value={selected.kind}
+                    onChange={(event) => changeKind(event.target.value as PlayLineKind)}
+                    aria-label="Line type"
+                    className="rounded-md bg-[#f7c948] px-1.5 py-1 text-xs font-black text-[#10201a] outline-none"
+                  >
+                    {LINE_KINDS.map((kind) => (
+                      <option key={kind} value={kind}>
+                        {LINE_STYLES[kind].label}
+                      </option>
+                    ))}
+                  </select>
+                  {LINE_STYLES[selected.kind].follow && (
+                    <>
+                      <span className="pl-1 text-[10px] font-black uppercase text-white/60">Then</span>
+                      {LINE_KINDS.map((kind) => (
+                        <KindButton key={kind} kind={kind} onClick={() => addFollow(kind)} label={`Then ${LINE_STYLES[kind].label}`} />
+                      ))}
+                    </>
+                  )}
+                  <button type="button" onClick={() => deleteLine(selected.id)} aria-label="Delete line" className={`${menuButton} flex items-center gap-1 text-[#f0a090] hover:bg-white/10`}>
+                    <Trash2 size={12} />
+                    Delete
+                  </button>
+                  {!LINE_STYLES[selected.kind].follow && (
+                    <span className="hidden px-1 text-[10px] font-bold text-white/60 lg:inline">
+                      Double-click or hold the line to add a pivot · drag a yellow dot to curve
+                    </span>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        ) : null
+
   return (
-    <div className="space-y-1" onKeyDown={handleKeyDown}>
+    <div className={fullscreen ? 'w-full' : 'space-y-1'} onKeyDown={handleKeyDown}>
       <div
-        className="relative w-full overflow-hidden rounded-lg border-4 border-[#f6f2df] shadow-field outline-none focus-visible:ring-2 focus-visible:ring-[#f7c948]"
+        className={`relative w-full overflow-hidden outline-none focus-visible:ring-2 focus-visible:ring-[#f7c948] ${
+          fullscreen ? '' : 'rounded-lg border-4 border-[#f6f2df] shadow-field'
+        }`}
         style={{ aspectRatio: '2 / 1', touchAction: 'none' }}
         tabIndex={0}
       >
@@ -635,75 +709,11 @@ export default function PlayCanvas({
           <span className="rounded-md bg-black/45 px-1.5 py-1 text-[10px] font-black text-white">{Math.round(view.zoom * 100)}%</span>
         </div>
 
+        {fullscreen && menu && <div className="absolute inset-x-1 bottom-1 z-10">{menu}</div>}
+
       </div>
 
-        {defender ? (
-          <div className="flex justify-center">
-            <div className="flex items-center gap-1 rounded-lg bg-[#10201a] p-1 text-white">
-              <span className="px-1.5 text-xs font-black text-[#f7c948]">Defender</span>
-              <button type="button" onClick={() => deleteDefender(defender.id)} aria-label="Delete defender" className={`${menuButton} flex items-center gap-1 text-[#f0a090] hover:bg-white/10`}>
-                <Trash2 size={12} />
-                Delete
-              </button>
-              <span className="hidden px-1 text-[10px] font-bold text-white/60 sm:inline">Drag to move</span>
-            </div>
-          </div>
-        ) : player || selected ? (
-          <div className="flex justify-center">
-            <div className="flex max-w-full flex-wrap items-center justify-center gap-1 rounded-lg bg-[#10201a] p-1 text-white">
-              {player && (
-                <>
-                  <span className="px-1.5 text-xs font-black text-[#f7c948]">{player.label}</span>
-                  {LINE_KINDS.map((kind) => (
-                    <KindButton key={kind} kind={kind} onClick={() => addLine(kind)} />
-                  ))}
-                  {playerLines.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => onLinesChange(lines.filter((item) => item.playerCode !== selectedPlayer))}
-                      className={`${menuButton} text-[#f0a090] hover:bg-white/10`}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </>
-              )}
-              {selected && (
-                <>
-                  <select
-                    value={selected.kind}
-                    onChange={(event) => changeKind(event.target.value as PlayLineKind)}
-                    aria-label="Line type"
-                    className="rounded-md bg-[#f7c948] px-1.5 py-1 text-xs font-black text-[#10201a] outline-none"
-                  >
-                    {LINE_KINDS.map((kind) => (
-                      <option key={kind} value={kind}>
-                        {LINE_STYLES[kind].label}
-                      </option>
-                    ))}
-                  </select>
-                  {LINE_STYLES[selected.kind].follow && (
-                    <>
-                      <span className="pl-1 text-[10px] font-black uppercase text-white/60">Then</span>
-                      {LINE_KINDS.map((kind) => (
-                        <KindButton key={kind} kind={kind} onClick={() => addFollow(kind)} label={`Then ${LINE_STYLES[kind].label}`} />
-                      ))}
-                    </>
-                  )}
-                  <button type="button" onClick={() => deleteLine(selected.id)} aria-label="Delete line" className={`${menuButton} flex items-center gap-1 text-[#f0a090] hover:bg-white/10`}>
-                    <Trash2 size={12} />
-                    Delete
-                  </button>
-                  {!LINE_STYLES[selected.kind].follow && (
-                    <span className="hidden px-1 text-[10px] font-bold text-white/60 lg:inline">
-                      Double-click or hold the line to add a pivot · drag a yellow dot to curve
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-        ) : (
+        {fullscreen ? null : menu || (
           <p className="py-1 text-xs font-bold text-[#53665c]">
             Tap a player to add a line. After a motion or handoff, tap its end to add what comes next. Drag the grass to move around; scroll or pinch to zoom.
           </p>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { ChevronLeft, Download, FlipHorizontal2, Trash2, X } from 'lucide-react'
 import CallBuilder from '@/components/CallBuilder'
 import PlayCanvas from '@/components/PlayCanvas'
@@ -12,6 +12,21 @@ import { classifySteps, playCallFromSteps, stepsFromPlay } from '@/lib/play-buil
 import { formationTitle, mirrorParts, otherSide, playSide, playSpots } from '@/lib/play-flip'
 import { LINE_VERSION, playLines, RUN_BLUE, validDefenders, viewOrDefault } from '@/lib/play-lines'
 import type { Formation, PlayArea, PlaybookPlay, PlayDefender, PlayLine, PlaySide, PlayStep, PlayType, PlayView } from '@/lib/types'
+
+/** A phone turned sideways: a touch screen that is wider than tall and short. */
+const phoneLandscapeQuery = '(orientation: landscape) and (max-height: 500px) and (pointer: coarse)'
+
+function usePhoneLandscape() {
+  const [matches, setMatches] = useState(false)
+  useEffect(() => {
+    const query = window.matchMedia(phoneLandscapeQuery)
+    const update = () => setMatches(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+  return matches
+}
 
 /** A play as the editor hands it over; the app fills in team, playbook and dates. */
 export type PlayEditorDraft = Omit<PlaybookPlay, 'teamId' | 'playbookId' | 'createdAt' | 'updatedAt'>
@@ -70,6 +85,17 @@ export default function PlayEditorPage({
   const [legacyFootballs, setLegacyFootballs] = useState(play?.footballs || [])
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [savingImage, setSavingImage] = useState(false)
+
+  // Turning a phone sideways gives the field the whole screen; turning it back brings the rest back.
+  const fullscreen = usePhoneLandscape() && Boolean(formation)
+  useEffect(() => {
+    if (!fullscreen) return
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [fullscreen])
 
   const players = usePositions(formation?.packageId)
   const spots = playSpots({ mirrored }, formation, players)
@@ -236,7 +262,12 @@ export default function PlayEditorPage({
 
       <div className="space-y-2">
         {/* The field takes the whole width, as tall as the screen allows with its menu still in sight. */}
-        <div className="mx-auto w-full" style={{ maxWidth: 'max(320px, calc((100dvh - 140px) * 2))' }}>
+        <div
+          className={fullscreen ? 'fixed inset-0 z-[70] flex items-center justify-center bg-[#10201a]' : 'mx-auto w-full'}
+          style={fullscreen ? undefined : { maxWidth: 'max(320px, calc((100dvh - 140px) * 2))' }}
+        >
+          {/* Same element either way, so turning the phone keeps whatever is selected. */}
+          <div className="w-full" style={fullscreen ? { maxWidth: 'calc(100dvh * 2)' } : undefined}>
           {formation ? (
             <PlayCanvas
               players={players}
@@ -250,12 +281,14 @@ export default function PlayEditorPage({
               onDefendersChange={setDefenders}
               legacyRoutes={legacyRoutes}
               legacyFootballs={legacyFootballs}
+              fullscreen={fullscreen}
             />
           ) : (
             <p className="rounded-lg border border-dashed border-[#d8ded5] px-3 py-3 text-center text-sm font-bold text-[#53665c]">
               Build a formation first, then plays can be drawn from it.
             </p>
           )}
+          </div>
         </div>
 
         <section className="grid gap-x-4 gap-y-2 rounded-lg border border-[#d8ded5] bg-white p-2.5 md:grid-cols-[minmax(240px,1fr)_minmax(0,2fr)]">

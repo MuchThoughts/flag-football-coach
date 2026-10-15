@@ -160,6 +160,8 @@ the play's name, formation, pass or run, area, notes and call.
   opposite him keeps his block and turns it where he stands. Lines, defenders and the view flip with them, and Right and Left
   swap in the call and the name ("Trips Right HB Dive Right" becomes "Trips
   Left HB Dive Left"). The play saves on whichever side is showing.
+- **On a phone, turn it sideways** and the field fills the screen, with the
+  menu over its foot. Turn it back for the name, call and Save.
 - **Image** at the top saves the play as a picture, right above left, at the
   view on screen.
 

@@ -254,6 +254,8 @@ export interface PlayLine {
   fromLineId?: string
 }
 
+export type PlaySide = 'right' | 'left'
+
 /** A defender drawn on a play, as a black X. Field percent. */
 export interface PlayDefender {
   id: string
@@ -285,6 +287,10 @@ export interface PlaybookPlay {
   lines?: PlayLine[]
   /** How far in and where the play is shown, here and when exported. */
   view?: PlayView
+  /** Which way the play is drawn. Its mirror image is the other side. */
+  side?: PlaySide
+  /** True when the players stand mirrored from how the formation is saved (linemen never move). */
+  mirrored?: boolean
   /** Defenders placed on the play, to show what it is drawn up against. */
   defenders?: PlayDefender[]
   /**

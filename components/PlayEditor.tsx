@@ -1,16 +1,17 @@
 'use client'
 
 import { useState } from 'react'
-import { ChevronLeft, Download, Trash2, X } from 'lucide-react'
+import { ChevronLeft, Download, FlipHorizontal2, Trash2, X } from 'lucide-react'
 import CallBuilder from '@/components/CallBuilder'
 import PlayCanvas from '@/components/PlayCanvas'
 import { savePlayImage } from '@/components/PlaybookExport'
 import { usePositions } from '@/components/PositionsContext'
-import { lineOf } from '@/lib/formation-edit'
+import { flipName, lineOf } from '@/lib/formation-edit'
 import { PLAY_AREAS, PLAY_TYPES, placeAll } from '@/lib/playbook'
 import { classifySteps, playCallFromSteps, stepsFromPlay } from '@/lib/play-builder'
+import { formationTitle, mirrorParts, otherSide, playSide, playSpots } from '@/lib/play-flip'
 import { LINE_VERSION, playLines, RUN_BLUE, validDefenders, viewOrDefault } from '@/lib/play-lines'
-import type { Formation, PlayArea, PlaybookPlay, PlayDefender, PlayLine, PlayStep, PlayType, PlayView } from '@/lib/types'
+import type { Formation, PlayArea, PlaybookPlay, PlayDefender, PlayLine, PlaySide, PlayStep, PlayType, PlayView } from '@/lib/types'
 
 /** A play as the editor hands it over; the app fills in team, playbook and dates. */
 export type PlayEditorDraft = Omit<PlaybookPlay, 'teamId' | 'playbookId' | 'createdAt' | 'updatedAt'>
@@ -43,15 +44,20 @@ export default function PlayEditorPage({
 }) {
   const [formationId, setFormationId] = useState(play?.formationId || defaultFormationId || formations[0]?.id || '')
   const formation = formations.find((item) => item.id === formationId)
+  const [side, setSide] = useState<PlaySide>(() => (play ? playSide(play) : 'right'))
+  // True when the players stand as the formation's mirror image, for the other side of the play.
+  const [mirrored, setMirrored] = useState(Boolean(play?.mirrored))
+  /** A mirrored play calls its formation by the other side's name: Trips Right becomes Trips Left. */
+  const formationName = (item?: Formation, flipped = mirrored) => (item && flipped ? flipName(item.name) : item?.name)
   // Plays written before the editor had a call are read back from their names where they can be.
   const [steps, setSteps] = useState<PlayStep[]>(() => (play && stepsFromPlay(play, formations)) || [])
-  const call = steps.length > 0 ? playCallFromSteps(steps, formation?.name) : ''
+  const call = steps.length > 0 ? playCallFromSteps(steps, formationName(formation)) : ''
   const [name, setName] = useState(play?.name || '')
   // The name follows the call until the coach types their own.
   const [nameEdited, setNameEdited] = useState(() => {
     if (!play) return false
     const opened = stepsFromPlay(play, formations) || []
-    return opened.length === 0 || play.name !== playCallFromSteps(opened, formations.find((item) => item.id === play.formationId)?.name)
+    return opened.length === 0 || play.name !== playCallFromSteps(opened, formationName(formations.find((item) => item.id === play.formationId), Boolean(play.mirrored)))
   })
   const [type, setType] = useState<PlayType>(play?.type || 'pass')
   const [area, setArea] = useState<PlayArea>(play?.area || 'middle')
@@ -66,13 +72,35 @@ export default function PlayEditorPage({
   const [savingImage, setSavingImage] = useState(false)
 
   const players = usePositions(formation?.packageId)
-  const spots = placeAll(formation?.positions || {}, players)
+  const spots = playSpots({ mirrored }, formation, players)
   // Anyone but the quarterback can get the ball or run a route.
   const receivers = players
     .filter((position) => position.type !== 'QB')
     .map((position) => position.label.trim())
     .filter(Boolean)
   const displayName = nameEdited ? name : call
+
+  /**
+   * Turns the play into its other side: everyone but the linemen mirrors
+   * across the center, every line, defender and the view mirror with them,
+   * and Left and Right swap in the call and the name.
+   */
+  function flipSide() {
+    const flipped = mirrorParts(
+      { lines, lineVersion: LINE_VERSION, defenders, view, steps, routes: legacyRoutes, footballs: legacyFootballs },
+      placeAll(formation?.positions || {}, players),
+      players
+    )
+    setLines(flipped.lines || [])
+    setDefenders(flipped.defenders || [])
+    if (flipped.view) setView(flipped.view)
+    setSteps(flipped.steps || [])
+    setLegacyRoutes(flipped.routes)
+    setLegacyFootballs(flipped.footballs)
+    if (nameEdited) setName(flipName(name))
+    setSide(otherSide(side))
+    setMirrored(!mirrored)
+  }
 
   /** A new call also says what kind of play it is, until the coach picks otherwise. */
   function changeSteps(next: PlayStep[]) {
@@ -98,7 +126,9 @@ export default function PlayEditorPage({
       lines,
       lineVersion: LINE_VERSION,
       view,
-      defenders
+      defenders,
+      side,
+      mirrored
     }
   }
 
@@ -149,12 +179,31 @@ export default function PlayEditorPage({
         ) : (
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {formation && (
+              <div className="flex items-center rounded-lg border border-[#d8ded5] bg-white p-0.5" role="group" aria-label="Side">
+                <FlipHorizontal2 size={14} className="mx-1 hidden text-[#53665c] sm:block" />
+                {(['right', 'left'] as const).map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => option !== side && flipSide()}
+                    aria-pressed={side === option}
+                    title={side === option ? `Drawn to the ${option}` : `Flip the play to the ${option}. Linemen keep their spots.`}
+                    className={`rounded-md px-2 py-1 text-xs font-black capitalize ${
+                      side === option ? 'bg-[#10201a] text-white' : 'text-[#53665c] hover:text-[#10201a]'
+                    }`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
+            {formation && (
               <button
                 type="button"
                 onClick={saveImage}
                 disabled={savingImage}
                 aria-label="Save as Image"
-                title="Save the play as a picture, at the view on screen"
+                title="Save the play as a picture, right and left, at the view on screen"
                 className={`${headerButton} border border-[#d8ded5] bg-white disabled:opacity-50`}
               >
                 <Download size={14} />
@@ -250,7 +299,7 @@ export default function PlayEditorPage({
               >
                 {formations.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name}
+                    {formationTitle(item.name, mirrored)}
                   </option>
                 ))}
               </select>

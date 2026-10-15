@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Printer, X } from 'lucide-react'
-import { usePositions } from '@/components/PositionsContext'
+import { usePackages, usePositions } from '@/components/PositionsContext'
+import { bothSides, formationTitle, sideTitle } from '@/lib/play-flip'
 import { playDiagramSvg, playFileName, type PlayDiagramTheme } from '@/lib/play-svg'
 import type { Formation, PlaybookPlay, PlaybookPosition } from '@/lib/types'
 
@@ -13,7 +14,7 @@ export function PlayDiagram({
   theme = 'paper',
   labels = true
 }: {
-  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion' | 'defenders'>>
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion' | 'defenders' | 'mirrored'>>
   formation?: Formation
   theme?: PlayDiagramTheme
   labels?: boolean
@@ -29,44 +30,65 @@ export function PlayDiagram({
   )
 }
 
-/**
- * Turns a play into a PNG. On a phone the share sheet offers Save Image, which is
- * where coaches expect it; anywhere else the file downloads.
- */
-export async function savePlayImage(play: PlaybookPlay, formation: Formation | undefined, positions: PlaybookPosition[]) {
-  const svg = playDiagramSvg(play, formation, positions, 'turf')
+/** Draws an SVG onto a canvas at a given spot. */
+async function drawSvg(context: CanvasRenderingContext2D, svg: string, x: number, y: number, width: number, height: number) {
   const image = new Image()
   const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
   try {
     image.src = url
     await image.decode()
-    const canvas = document.createElement('canvas')
-    canvas.width = 1200
-    canvas.height = 600
-    canvas.getContext('2d')?.drawImage(image, 0, 0, canvas.width, canvas.height)
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (!blob) throw new Error('The image could not be drawn.')
-
-    const fileName = playFileName(play.name, 'png')
-    const file = new File([blob], fileName, { type: 'image/png' })
-    if (navigator.canShare?.({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: play.name })
-        return
-      } catch (error) {
-        // Closing the share sheet is a choice, not a failure.
-        if (error instanceof DOMException && error.name === 'AbortError') return
-      }
-    }
-
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = fileName
-    link.click()
-    window.setTimeout(() => URL.revokeObjectURL(link.href), 1000)
+    context.drawImage(image, x, y, width, height)
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+/**
+ * Turns a play into a PNG with both sides, right above left, each under its
+ * name. On a phone the share sheet offers Save Image, which is where coaches
+ * expect it; anywhere else the file downloads.
+ */
+export async function savePlayImage(play: PlaybookPlay, formation: Formation | undefined, positions: PlaybookPosition[]) {
+  const width = 1200
+  const height = 600
+  const bar = 48
+  const sides = bothSides(play, formation, positions)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = sides.length * (bar + height)
+  const context = canvas.getContext('2d')
+  if (!context) throw new Error('The image could not be drawn.')
+  for (let index = 0; index < sides.length; index += 1) {
+    const side = sides[index]
+    const top = index * (bar + height)
+    context.fillStyle = '#10201a'
+    context.fillRect(0, top, width, bar)
+    context.fillStyle = '#ffffff'
+    context.font = '900 26px Helvetica, Arial, sans-serif'
+    context.textBaseline = 'middle'
+    context.fillText(sideTitle(side), 18, top + bar / 2, width - 36)
+    await drawSvg(context, playDiagramSvg(side, formation, positions, 'turf'), 0, top + bar, width, height)
+  }
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+  if (!blob) throw new Error('The image could not be drawn.')
+
+  const fileName = playFileName(play.name, 'png')
+  const file = new File([blob], fileName, { type: 'image/png' })
+  if (navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: play.name })
+      return
+    } catch (error) {
+      // Closing the share sheet is a choice, not a failure.
+      if (error instanceof DOMException && error.name === 'AbortError') return
+    }
+  }
+
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = fileName
+  link.click()
+  window.setTimeout(() => URL.revokeObjectURL(link.href), 1000)
 }
 
 /**
@@ -114,7 +136,19 @@ export function PrintPlaybookSheet({
   const [layout, setLayout] = useState<PrintLayout>('grid')
   const [includeNotes, setIncludeNotes] = useState(true)
 
+  const packages = usePackages()
   const formationFor = (play: PlaybookPlay) => formations.find((item) => item.id === play.formationId)
+  const positionsFor = (formation?: Formation) => (packages.find((item) => item.id === formation?.packageId) || packages[0]).positions
+  // Every play prints twice: its right, then its left.
+  const cards = plays.flatMap((play, index) => {
+    const formation = formationFor(play)
+    return bothSides(play, formation, positionsFor(formation)).map((side) => ({
+      key: `${play.id}-${side.side}`,
+      number: `${index + 1}${side.side === 'left' ? 'L' : 'R'}`,
+      play: side,
+      formation
+    }))
+  })
 
   const printable = (
     <PrintPortal page={`letter ${layout === 'full' ? 'landscape' : 'portrait'}`}>
@@ -124,26 +158,23 @@ export function PrintPlaybookSheet({
           {teamName && <p className="print-header-team">{teamName}</p>}
         </div>
         <p>
-          {plays.length} play{plays.length === 1 ? '' : 's'}
+          {plays.length} play{plays.length === 1 ? '' : 's'}, right and left
         </p>
       </header>
       <div className={layout === 'full' ? 'print-full' : 'print-grid'}>
-        {plays.map((play, index) => {
-          const formation = formationFor(play)
-          return (
-            <article key={play.id} className="print-card">
-              <div className="print-card-title">
-                <span className="print-card-number">{index + 1}</span>
-                <h2>{play.name}</h2>
-              </div>
-              <p className="print-card-meta">
-                {formation?.name || 'No formation'} · {play.type} · {play.area}
-              </p>
-              <PlayDiagram play={play} formation={formation} />
-              {includeNotes && play.notes && <p className="print-card-notes">{play.notes}</p>}
-            </article>
-          )
-        })}
+        {cards.map(({ key, number, play, formation }) => (
+          <article key={key} className="print-card">
+            <div className="print-card-title">
+              <span className="print-card-number">{number}</span>
+              <h2>{sideTitle(play)}</h2>
+            </div>
+            <p className="print-card-meta">
+              {formation ? formationTitle(formation.name, play.mirrored) : 'No formation'} · {play.type} · {play.area}
+            </p>
+            <PlayDiagram play={play} formation={formation} />
+            {includeNotes && play.notes && <p className="print-card-notes">{play.notes}</p>}
+          </article>
+        ))}
       </div>
     </PrintPortal>
   )
@@ -156,7 +187,7 @@ export function PrintPlaybookSheet({
             <div className="min-w-0">
               <h3 className="font-display text-xl font-black">Export Playbook</h3>
               <p className="mt-1 text-sm font-bold text-[#53665c]">
-                All {plays.length} play{plays.length === 1 ? '' : 's'} in {title}. Choose Save as PDF in the print dialog
+                All {plays.length} play{plays.length === 1 ? '' : 's'} in {title}, each drawn right and left. Choose Save as PDF in the print dialog
                 to keep a copy.
               </p>
             </div>

@@ -152,7 +152,14 @@ the play's name, formation, pass or run, area, notes and call.
 - **Defenders:** **Add Defender**, top left of the field, drops a black X
   across the line. Drag it where the defender lines up; tap it for **Delete**.
   Defenders save with the play and show in its picture and printouts.
-- **Image** at the top saves the play as a picture, at the view on screen.
+- **Right and left:** every play has a mirror image. **Right | Left** at the
+  top flips the play: everyone mirrors across the center except the linemen,
+  who keep their spots (a left guard stays left) and turn their blocks the
+  other way. Lines, defenders and the view flip with them, and Right and Left
+  swap in the call and the name ("Trips Right HB Dive Right" becomes "Trips
+  Left HB Dive Left"). The play saves on whichever side is showing.
+- **Image** at the top saves the play as a picture, right above left, at the
+  view on screen.
 
 ## Call sheets
 
@@ -170,7 +177,8 @@ newer version has been deployed, a yellow bar offers **Reload**.
 ## Exporting the playbook
 
 - **Print or PDF:** open a playbook and tap **Export**. It prints every play
-  in it, six to a page or one per page, with or without notes. Choose
+  in it twice, right then left (numbered 1R, 1L, 2R...), six to a page or one
+  per page, with or without notes. Choose
   **Save as PDF** in the print dialog to keep a file.
 - **One play as an image:** open a play and tap **Image**. On a phone
   the share sheet opens (Save Image, Messages, AirDrop); elsewhere a PNG

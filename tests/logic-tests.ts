@@ -13,6 +13,7 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
+import { bothSides, formationTitle, mirrorPlay, playSide, playSpots, sideTitle } from '../lib/play-flip'
 import {
   bendThrough,
   DEFAULT_VIEW,
@@ -1390,6 +1391,86 @@ assert.equal(roundTripFailures, 0)
   assert.ok(defenderMark({ x: 50, y: 44 }).includes('stroke="#000000"'))
   const defended = playDiagramSvg({ ...drawnPlay, defenders: [{ id: 'd1', ...firstSpot }, { id: 'd2', ...secondSpot }] }, formation)
   assert.equal((defended.match(/stroke="#000000"/g) || []).length, 2)
+}
+
+// ---- Right and left ----
+{
+  const positions: PlaybookPosition[] = [
+    { code: 'LG', label: 'LG', type: 'OL' },
+    { code: 'C', label: 'C', type: 'OL' },
+    { code: 'QB', label: 'QB', type: 'QB' },
+    { code: 'RB', label: 'RB', type: 'RB' },
+    { code: 'X', label: 'X', type: 'WR' }
+  ]
+  const formation = { positions: { LG: { x: 40, y: 52 }, C: { x: 50, y: 52 }, QB: { x: 50, y: 70 }, RB: { x: 60, y: 82 }, X: { x: 10, y: 52 } } }
+  const motion = newLine('m', 'motion', 'X', { x: 10, y: 52 })
+  const play = {
+    name: 'Trips Right HB Dive Right',
+    mirrored: false,
+    routes: [],
+    footballs: [],
+    lines: [
+      motion,
+      newLine('r', 'route', 'X', motion.points[0], { from: motion, end: { x: 30, y: 30 } }),
+      newLine('b', 'block', 'LG', { x: 40, y: 52 }, { end: { x: 44, y: 47 } }),
+      { ...newLine('h', 'handoff', 'QB', { x: 50, y: 70 }, { end: { x: 56, y: 78 } }), bends: [{ x: 54, y: 72 }] }
+    ],
+    lineVersion: LINE_VERSION,
+    defenders: [{ id: 'd', x: 56, y: 44 }],
+    view: { x: 60, y: 50, zoom: 1.5 },
+    steps: [{ id: 's', componentId: 'hb-dive', direction: 'right' as const }]
+  }
+
+  // Which way a play goes: as set, else from its name, else right.
+  assert.equal(playSide(play), 'right')
+  assert.equal(playSide({ name: 'Trips Left Sweep' }), 'left')
+  assert.equal(playSide({ name: 'Trips Left Sweep', side: 'right' }), 'right')
+  assert.equal(playSide({ name: 'Trips Left Dive Right' }), 'right')
+
+  const flipped = mirrorPlay(play, formation, positions)
+  assert.equal(flipped.name, 'Trips Left HB Dive Left')
+  assert.equal(flipped.side, 'left')
+  assert.equal(flipped.mirrored, true)
+  assert.equal(flipped.steps![0].direction, 'left')
+  // Everyone mirrors across the center...
+  assert.deepEqual(flipped.lines![0].points, [{ x: 78, y: 52 }])
+  assert.deepEqual(flipped.lines![1].points, [{ x: 70, y: 30 }])
+  assert.equal(flipped.lines![1].fromLineId, 'm')
+  assert.deepEqual(flipped.lines![3].points, [{ x: 44, y: 78 }])
+  assert.deepEqual(flipped.lines![3].bends, [{ x: 46, y: 72 }])
+  assert.deepEqual(flipped.defenders, [{ id: 'd', x: 44, y: 44 }])
+  assert.deepEqual(flipped.view, { x: 40, y: 50, zoom: 1.5 })
+  // ...but a lineman stays put and his block turns the other way from where he stands.
+  assert.deepEqual(flipped.lines![2].points, [{ x: 36, y: 47 }])
+  const spots = playSpots(flipped, formation, positions)
+  assert.deepEqual(spots.LG, { x: 40, y: 52 })
+  assert.deepEqual(spots.C, { x: 50, y: 52 })
+  assert.deepEqual(spots.RB, { x: 40, y: 82 })
+  assert.deepEqual(spots.X, { x: 90, y: 52 })
+  assert.deepEqual(playSpots(play, formation, positions).RB, { x: 60, y: 82 })
+
+  // Flipping twice is the play it started as.
+  const back = mirrorPlay(flipped, formation, positions)
+  assert.equal(back.name, play.name)
+  assert.equal(back.mirrored, false)
+  assert.deepEqual(back.lines, play.lines)
+  assert.deepEqual(back.defenders, play.defenders)
+  assert.deepEqual(back.view, play.view)
+
+  // Exports get both, right first, whichever side was drawn.
+  assert.deepEqual(bothSides(play, formation, positions).map((item) => item.name), ['Trips Right HB Dive Right', 'Trips Left HB Dive Left'])
+  assert.deepEqual(bothSides(flipped, formation, positions).map((item) => item.name), ['Trips Right HB Dive Right', 'Trips Left HB Dive Left'])
+  // A name that never says which way gets the side added.
+  assert.deepEqual(bothSides({ ...play, name: 'Hitches' }, formation, positions).map(sideTitle), ['Hitches (Right)', 'Hitches (Left)'])
+  assert.equal(sideTitle(play), play.name)
+  assert.equal(formationTitle('Trips Right', true), 'Trips Left')
+  assert.equal(formationTitle('Trips Right', false), 'Trips Right')
+  assert.equal(formationTitle('Bunch', true), 'Bunch (flipped)')
+
+  // The drawing follows: the mirrored play puts the back on the other side.
+  const svgFormation = { ...formation, id: 'f', teamId: 't', playbookId: 'p', name: 'F', packageId: 'x', createdAt: '', updatedAt: '' }
+  assert.ok(playDiagramSvg(play, svgFormation, positions).includes('cx="120" cy="82"'))
+  assert.ok(playDiagramSvg(flipped, svgFormation, positions).includes('cx="80" cy="82"'))
 }
 
 console.log('logic tests passed')

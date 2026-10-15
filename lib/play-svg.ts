@@ -1,4 +1,5 @@
-import { DEFAULT_POSITIONS, placeAll } from './playbook'
+import { DEFAULT_POSITIONS } from './playbook'
+import { playSpots } from './play-flip'
 import { LINE_OF_SCRIMMAGE } from './positions'
 import { defenderMark, endTrim, frameScale, HALO, lineEnd, validDefenders, LINE_STYLES, lineStart, pathData, playLines, viewBox, viewOrDefault } from './play-lines'
 import type { Formation, PlaybookPlay, PlaybookPosition } from './types'
@@ -67,7 +68,7 @@ function football(point: { x: number; y: number }) {
 const reach = { x: -500, y: -400, w: 1200, h: 900 }
 
 export function playDiagramSvg(
-  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion' | 'defenders'>>,
+  play: Pick<PlaybookPlay, 'routes' | 'footballs'> & Partial<Pick<PlaybookPlay, 'lines' | 'view' | 'lineVersion' | 'defenders' | 'mirrored'>>,
   formation: Formation | undefined,
   positions: PlaybookPosition[] = DEFAULT_POSITIONS,
   theme: PlayDiagramTheme = 'paper',
@@ -100,7 +101,7 @@ export function playDiagramSvg(
     parts.push(arrowHead(points, colors.route))
   })
 
-  const spots = placeAll(formation?.positions || {}, positions)
+  const spots = playSpots(play, formation, positions)
   const drawn = playLines(play).filter((item) => item.points.length > 0)
   const ends: string[] = []
   drawn.forEach((item) => {

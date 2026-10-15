@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { ChevronLeft, Download, FlipHorizontal2, Trash2, X } from 'lucide-react'
+import { ChevronLeft, Copy, Download, FlipHorizontal2, Trash2, X } from 'lucide-react'
 import CallBuilder from '@/components/CallBuilder'
 import PlayCanvas from '@/components/PlayCanvas'
 import { savePlayImage } from '@/components/PlaybookExport'
@@ -43,14 +43,20 @@ function uid(prefix: string) {
  */
 export default function PlayEditorPage({
   play,
+  copyOf,
   formations,
   defaultFormationId,
   defaultMirrored = false,
+  onDuplicate,
   onSave,
   onDelete,
   onClose
 }: {
   play?: PlaybookPlay
+  /** A new play that starts as a copy of this one. */
+  copyOf?: PlaybookPlay
+  /** Saves the play as it stands and opens a new copy of it. */
+  onDuplicate?: (play: PlayEditorDraft) => void
   formations: Formation[]
   /** The playbook's base formation, picked for a new play. */
   defaultFormationId?: string
@@ -60,36 +66,40 @@ export default function PlayEditorPage({
   onDelete?: () => void
   onClose: () => void
 }) {
-  const [formationId, setFormationId] = useState(play?.formationId || defaultFormationId || formations[0]?.id || '')
+  // A copy starts as everything the play it was copied from has.
+  const source = play || copyOf
+  const [formationId, setFormationId] = useState(source?.formationId || defaultFormationId || formations[0]?.id || '')
   const formation = formations.find((item) => item.id === formationId)
   // True when the players stand as the formation's mirror image, for the other side of the play.
-  const [mirrored, setMirrored] = useState(play ? Boolean(play.mirrored) : defaultMirrored)
+  const [mirrored, setMirrored] = useState(source ? Boolean(source.mirrored) : defaultMirrored)
   const [side, setSide] = useState<PlaySide>(() => {
-    if (play) return playSide(play)
+    if (source) return playSide(source)
     const formationSide = playSide({ name: formation?.name || '' })
     return defaultMirrored ? otherSide(formationSide) : formationSide
   })
   /** A mirrored play calls its formation by the other side's name: Trips Right becomes Trips Left. */
   const formationName = (item?: Formation, flipped = mirrored) => (item && flipped ? flipName(item.name) : item?.name)
   // Plays written before the editor had a call are read back from their names where they can be.
-  const [steps, setSteps] = useState<PlayStep[]>(() => (play && stepsFromPlay(play, formations)) || [])
+  const [steps, setSteps] = useState<PlayStep[]>(() => (source && stepsFromPlay(source, formations)) || [])
   const call = steps.length > 0 ? playCallFromSteps(steps, formationName(formation)) : ''
-  const [name, setName] = useState(play?.name || '')
+  const [name, setName] = useState(copyOf ? `${copyOf.name} copy` : source?.name || '')
   // The name follows the call until the coach types their own.
   const [nameEdited, setNameEdited] = useState(() => {
-    if (!play) return false
-    const opened = stepsFromPlay(play, formations) || []
-    return opened.length === 0 || play.name !== playCallFromSteps(opened, formationName(formations.find((item) => item.id === play.formationId), Boolean(play.mirrored)))
+    if (!source) return false
+    const opened = stepsFromPlay(source, formations) || []
+    // A copy of a play named for its call keeps following the call, so changing the call renames it.
+    if (copyOf && opened.length > 0 && copyOf.name === playCallFromSteps(opened, formationName(formations.find((item) => item.id === copyOf.formationId), Boolean(copyOf.mirrored)))) return false
+    return opened.length === 0 || Boolean(copyOf) || source.name !== playCallFromSteps(opened, formationName(formations.find((item) => item.id === source.formationId), Boolean(source.mirrored)))
   })
-  const [type, setType] = useState<PlayType>(play?.type || 'pass')
-  const [area, setArea] = useState<PlayArea>(play?.area || 'middle')
-  const [notes, setNotes] = useState(play?.notes || '')
-  const [lines, setLines] = useState<PlayLine[]>(() => (play ? playLines(play) : []))
-  const [view, setView] = useState<PlayView>(() => viewOrDefault(play?.view))
-  const [defenders, setDefenders] = useState<PlayDefender[]>(() => validDefenders(play?.defenders))
+  const [type, setType] = useState<PlayType>(source?.type || 'pass')
+  const [area, setArea] = useState<PlayArea>(source?.area || 'middle')
+  const [notes, setNotes] = useState(source?.notes || '')
+  const [lines, setLines] = useState<PlayLine[]>(() => (source ? playLines(source) : []))
+  const [view, setView] = useState<PlayView>(() => viewOrDefault(source?.view))
+  const [defenders, setDefenders] = useState<PlayDefender[]>(() => validDefenders(source?.defenders))
   // Lines from the old freehand tool still show until the coach clears them.
-  const [legacyRoutes, setLegacyRoutes] = useState(play?.routes || [])
-  const [legacyFootballs, setLegacyFootballs] = useState(play?.footballs || [])
+  const [legacyRoutes, setLegacyRoutes] = useState(source?.routes || [])
+  const [legacyFootballs, setLegacyFootballs] = useState(source?.footballs || [])
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [savingImage, setSavingImage] = useState(false)
 
@@ -241,6 +251,18 @@ export default function PlayEditorPage({
               >
                 <Download size={14} />
                 <span className="hidden md:inline">Image</span>
+              </button>
+            )}
+            {onDuplicate && formation && (
+              <button
+                type="button"
+                onClick={() => onDuplicate(draft())}
+                aria-label="Duplicate"
+                title="Save this play and start a new one from a copy of it"
+                className={`${headerButton} border border-[#d8ded5] bg-white`}
+              >
+                <Copy size={14} />
+                <span className="hidden md:inline">Duplicate</span>
               </button>
             )}
             {onDelete && (

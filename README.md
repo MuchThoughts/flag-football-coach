@@ -167,6 +167,10 @@ the play's name, formation, pass or run, area, notes and call.
   Left HB Dive Left"). The play saves on whichever side is showing.
 - **On a phone, turn it sideways** and the field fills the screen, with the
   menu over its foot. Turn it back for the name, call and Save.
+- **Duplicate** at the top saves the play as it stands and opens a copy of it
+  (lines, defenders, call, view and notes) to change into a variation. A play
+  named for its call keeps following the call, so changing the call renames
+  the copy; one with its own name becomes "... copy". Cancel and no copy is made.
 - **Image** at the top saves the play as a picture, right above left, at the
   view on screen.
 

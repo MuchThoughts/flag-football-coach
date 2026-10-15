@@ -1548,6 +1548,8 @@ function PlaybookPage({
   /** Where a new play starts: the formation it was made from, or the base formation, and which side it shows. */
   const [newPlayFormationId, setNewPlayFormationId] = useState<string | undefined>()
   const [newPlayMirrored, setNewPlayMirrored] = useState(false)
+  /** The play a new play is being copied from, when it was started with Duplicate. */
+  const [copyOf, setCopyOf] = useState<PlaybookPlay | null>(null)
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
   const [exporting, setExporting] = useState(false)
   const [showCallSheets, setShowCallSheets] = useState(false)
@@ -1564,6 +1566,7 @@ function PlaybookPage({
     (playbook.packages.find((item) => item.id === formation.packageId) || playbook.packages[0])?.name
 
   function newPlay(formationId?: string, mirrored = false) {
+    setCopyOf(null)
     setNewPlayFormationId(formationId)
     setNewPlayMirrored(mirrored)
     setEditingPlay('new')
@@ -1582,8 +1585,19 @@ function PlaybookPage({
       <PackagesContext.Provider value={playbook.packages}>
         {editingPlay && (
           <PlayEditorPage
-            key={editingPlay === 'new' ? 'new' : editingPlay.id}
+            key={editingPlay === 'new' ? `new-${copyOf?.id || ''}` : editingPlay.id}
             play={editingPlay === 'new' ? undefined : editingPlay}
+            copyOf={editingPlay === 'new' ? copyOf || undefined : undefined}
+            onDuplicate={
+              editingPlay === 'new'
+                ? undefined
+                : (current) => {
+                    // The play is saved as it stands, then its copy opens, unsaved until Save.
+                    savePlay(current)
+                    setCopyOf({ ...current, teamId: editingPlay.teamId, playbookId: editingPlay.playbookId, createdAt: '', updatedAt: '' })
+                    setEditingPlay('new')
+                  }
+            }
             formations={formations}
             defaultFormationId={newPlayFormationId || baseFormation?.id}
             defaultMirrored={newPlayMirrored}

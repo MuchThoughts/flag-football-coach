@@ -161,9 +161,9 @@ export default function PlayEditorPage({
         >
           <ChevronLeft size={18} />
         </button>
-        <h1 className="font-display text-xl font-black">
-          {play ? 'Edit' : 'New'}
-          <span className="hidden sm:inline"> Play</span>
+        {/* The play's name as it stands, following the call and the side. */}
+        <h1 className="line-clamp-2 min-w-0 flex-1 break-words font-display text-sm font-black leading-tight sm:line-clamp-1 sm:text-xl" title={displayName.trim() || undefined}>
+          {displayName.trim() || 'New Play'}
         </h1>
         {confirmingDelete ? (
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5">

@@ -30,8 +30,8 @@ export const HALO = 'rgba(246,242,223,0.6)'
 
 export const LINE_STYLES: Record<PlayLineKind, LineStyle> = {
   route: { color: '#10201a', width: 1.1, end: 'arrow', label: 'Route', follow: false },
-  run: { color: RUN_BLUE, width: 2.2, end: 'arrow', label: 'Run', follow: false, halo: true },
-  fake: { color: FAKE_RED, width: 2.2, end: 'arrow', label: 'Fake', follow: false },
+  run: { color: RUN_BLUE, width: 1.76, end: 'arrow', label: 'Run', follow: false, halo: true },
+  fake: { color: FAKE_RED, width: 1.76, end: 'arrow', label: 'Fake', follow: false },
   block: { color: '#10201a', width: 1.4, end: 'tee', label: 'Block', follow: false },
   motion: { color: '#10201a', width: 1, dash: '2 1.6', end: 'none', label: 'Motion', follow: true },
   handoff: { color: RUN_BLUE, width: 1.2, end: 'x', label: 'Handoff', follow: true, halo: true },

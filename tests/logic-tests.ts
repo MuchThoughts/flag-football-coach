@@ -13,7 +13,7 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
-import { bothSides, formationTitle, mirrorPlay, playSide, playSpots, sideTitle } from '../lib/play-flip'
+import { bothSides, formationTitle, linePartners, mirrorPlay, playSide, playSpots, sideTitle } from '../lib/play-flip'
 import {
   bendThrough,
   DEFAULT_VIEW,
@@ -1398,11 +1398,13 @@ assert.equal(roundTripFailures, 0)
   const positions: PlaybookPosition[] = [
     { code: 'LG', label: 'LG', type: 'OL' },
     { code: 'C', label: 'C', type: 'OL' },
+    { code: 'RG', label: 'RG', type: 'OL' },
+    { code: 'TE', label: 'TE', type: 'OL' },
     { code: 'QB', label: 'QB', type: 'QB' },
     { code: 'RB', label: 'RB', type: 'RB' },
     { code: 'X', label: 'X', type: 'WR' }
   ]
-  const formation = { positions: { LG: { x: 40, y: 52 }, C: { x: 50, y: 52 }, QB: { x: 50, y: 70 }, RB: { x: 60, y: 82 }, X: { x: 10, y: 52 } } }
+  const formation = { positions: { LG: { x: 40, y: 52 }, C: { x: 50, y: 52 }, RG: { x: 60, y: 52 }, TE: { x: 70, y: 53 }, QB: { x: 50, y: 70 }, RB: { x: 60, y: 82 }, X: { x: 10, y: 52 } } }
   const motion = newLine('m', 'motion', 'X', { x: 10, y: 52 })
   const play = {
     name: 'Trips Right HB Dive Right',
@@ -1413,6 +1415,8 @@ assert.equal(roundTripFailures, 0)
       motion,
       newLine('r', 'route', 'X', motion.points[0], { from: motion, end: { x: 30, y: 30 } }),
       newLine('b', 'block', 'LG', { x: 40, y: 52 }, { end: { x: 44, y: 47 } }),
+      newLine('c', 'block', 'C', { x: 50, y: 52 }, { end: { x: 47, y: 47 } }),
+      newLine('t', 'block', 'TE', { x: 70, y: 53 }, { end: { x: 72, y: 48 } }),
       { ...newLine('h', 'handoff', 'QB', { x: 50, y: 70 }, { end: { x: 56, y: 78 } }), bends: [{ x: 54, y: 72 }] }
     ],
     lineVersion: LINE_VERSION,
@@ -1436,12 +1440,20 @@ assert.equal(roundTripFailures, 0)
   assert.deepEqual(flipped.lines![0].points, [{ x: 78, y: 52 }])
   assert.deepEqual(flipped.lines![1].points, [{ x: 70, y: 30 }])
   assert.equal(flipped.lines![1].fromLineId, 'm')
-  assert.deepEqual(flipped.lines![3].points, [{ x: 44, y: 78 }])
-  assert.deepEqual(flipped.lines![3].bends, [{ x: 46, y: 72 }])
+  assert.deepEqual(flipped.lines![5].points, [{ x: 44, y: 78 }])
+  assert.deepEqual(flipped.lines![5].bends, [{ x: 46, y: 72 }])
   assert.deepEqual(flipped.defenders, [{ id: 'd', x: 44, y: 44 }])
   assert.deepEqual(flipped.view, { x: 40, y: 50, zoom: 1.5 })
-  // ...but a lineman stays put and his block turns the other way from where he stands.
-  assert.deepEqual(flipped.lines![2].points, [{ x: 36, y: 47 }])
+  // ...linemen stay put, but the blocking mirrors across the center: the left
+  // guard's block becomes the right guard's, and the center's turns the other way.
+  assert.deepEqual(flipped.lines![2].playerCode, 'RG')
+  assert.deepEqual(flipped.lines![2].points, [{ x: 56, y: 47 }])
+  assert.deepEqual(flipped.lines![3].playerCode, 'C')
+  assert.deepEqual(flipped.lines![3].points, [{ x: 53, y: 47 }])
+  // With nobody standing opposite, a lineman keeps his block and turns it where he stands.
+  assert.deepEqual(flipped.lines![4].playerCode, 'TE')
+  assert.deepEqual(flipped.lines![4].points, [{ x: 68, y: 48 }])
+  assert.deepEqual(linePartners(['LG', 'C', 'RG', 'TE'], formation.positions, 50), { LG: 'RG', C: 'C', RG: 'LG', TE: null })
   const spots = playSpots(flipped, formation, positions)
   assert.deepEqual(spots.LG, { x: 40, y: 52 })
   assert.deepEqual(spots.C, { x: 50, y: 52 })

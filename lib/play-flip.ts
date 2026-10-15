@@ -6,8 +6,9 @@ import type { FieldPoint, Formation, PlaybookPlay, PlaybookPosition, PlayDefende
 /**
  * Every play has a right and a left: the same play as a mirror image. One is
  * drawn; the other is worked out from it. Everyone mirrors across the center
- * except the linemen, who keep their spots (a left guard stays on the left)
- * and mirror their own assignments in place.
+ * except the linemen, who keep their spots (a left guard stays on the left).
+ * Their blocking still mirrors across the center: the block the right guard
+ * had on one side is the left guard's on the other.
  */
 
 function round(value: number) {
@@ -30,6 +31,25 @@ export function playSpots(play: { mirrored?: boolean }, formation: Pick<Formatio
   return play.mirrored ? flipFormation(spots, positions) : spots
 }
 
+/**
+ * For each lineman, who stands opposite him across the center: the left
+ * guard for the right guard, the center for himself. Linemen don't move when
+ * a play flips, so their blocks go to whoever stands where the mirror puts
+ * them. Null when nobody stands there.
+ */
+export function linePartners(codes: string[], spots: SlotPositions, axis: number): Record<string, string | null> {
+  // Close enough to count as the same spot, in field percent.
+  const reach = 3
+  return codes.reduce<Record<string, string | null>>((partners, code) => {
+    const mirror = { x: 2 * axis - spots[code].x, y: spots[code].y }
+    const nearest = codes
+      .map((other) => ({ other, distance: Math.hypot((spots[other].x - mirror.x) * 2, spots[other].y - mirror.y) }))
+      .sort((a, b) => a.distance - b.distance)[0]
+    partners[code] = nearest && nearest.distance <= reach * 2 ? nearest.other : null
+    return partners
+  }, {})
+}
+
 /** The parts of a play that have a left and a right. */
 export interface MirrorParts {
   lines?: PlayLine[]
@@ -47,16 +67,18 @@ export interface MirrorParts {
  */
 export function mirrorParts<T extends MirrorParts>(parts: T, spots: SlotPositions, positions: PlaybookPosition[]): T {
   const axis = centerX(spots, positions)
-  const linemen = new Set(positions.filter((position) => position.type === 'OL').map((position) => position.code))
   const across = (point: FieldPoint, around = axis) => ({ ...point, x: round(2 * around - point.x) })
-  // A lineman's lines turn the other way from where he stands; everyone else's mirror across the center.
-  const lineAxis = (line: PlayLine) => (linemen.has(line.playerCode) && spots[line.playerCode] ? spots[line.playerCode].x : axis)
+  const linemen = positions.filter((position) => position.type === 'OL' && spots[position.code])
+  const partners = linePartners(linemen.map((position) => position.code), spots, axis)
+  // With nobody standing opposite, a lineman's lines turn the other way from where he stands.
+  const lineAxis = (line: PlayLine) => (partners[line.playerCode] === null ? spots[line.playerCode].x : axis)
 
   return {
     ...parts,
     lines: playLines(parts).map((line) => {
       const around = lineAxis(line)
-      return { ...line, points: line.points.map((point) => across(point, around)), bends: line.bends.map((bend) => (bend ? across(bend, around) : null)) }
+      const playerCode = partners[line.playerCode] || line.playerCode
+      return { ...line, playerCode, points: line.points.map((point) => across(point, around)), bends: line.bends.map((bend) => (bend ? across(bend, around) : null)) }
     }),
     lineVersion: LINE_VERSION,
     defenders: parts.defenders?.map((item) => across(item)),

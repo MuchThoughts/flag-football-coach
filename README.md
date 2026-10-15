@@ -154,8 +154,10 @@ the play's name, formation, pass or run, area, notes and call.
   Defenders save with the play and show in its picture and printouts.
 - **Right and left:** every play has a mirror image. **Right | Left** at the
   top flips the play: everyone mirrors across the center except the linemen,
-  who keep their spots (a left guard stays left) and turn their blocks the
-  other way. Lines, defenders and the view flip with them, and Right and Left
+  who keep their spots (a left guard stays left). Their blocking still
+  mirrors across the center: the right guard's block becomes the left
+  guard's, and the center's turns the other way. A lineman with nobody
+  opposite him keeps his block and turns it where he stands. Lines, defenders and the view flip with them, and Right and Left
   swap in the call and the name ("Trips Right HB Dive Right" becomes "Trips
   Left HB Dive Left"). The play saves on whichever side is showing.
 - **Image** at the top saves the play as a picture, right above left, at the

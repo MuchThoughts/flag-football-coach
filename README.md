@@ -102,10 +102,15 @@ move the line of scrimmage; players standing on the line move with it.
 Click a formation card to edit it. Its plays are listed under the field, with
 **New Play** at the top of that list to start one from this formation; a play
 opens in the play editor and comes back here when you're done. **Duplicate**, at the top of the edit page,
-saves the formation as it stands and makes a copy. **Flip** (on by default)
-mirrors the copy left to right around the center, and every OL player keeps
-their spot, so a left guard stays left. The name follows: "Trips Right" becomes
-"Trips Left". The copy is placed next to its original.
+saves the formation as it stands and makes a copy next to it.
+
+Every formation has a right and a left, and is listed once ("Trips Right" shows
+as "Trips"). **Right | Left** at the top of the edit page flips it: everyone
+mirrors across the center except the OL players, who keep their spots, and
+the name follows ("Trips Left"). It saves as the side it was made on, and
+**New Play** starts on the side showing. Formations saved earlier as separate
+Right and Left copies are combined into one: the Right one stays, and plays
+from the Left one move onto it drawn as its left side.
 
 The small star (**Set as base**) in the top bar makes a
 formation the playbook's base: new formations start from it and new plays

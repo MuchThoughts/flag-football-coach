@@ -1,3 +1,4 @@
+import { mergeMirroredFormations } from './play-flip'
 import { DEFAULT_POSITIONS, layoutPositions, MAX_PLAYERS, MIN_PLAYERS, withPositionTypes } from './playbook'
 import type { CallSheet, CallSheetSection, Formation, PersonnelPackage, Playbook, PlaybookPlay, PlaybookPosition } from './types'
 
@@ -151,7 +152,8 @@ export function ensurePlaybooks(
       : { ...formation, packageId: playbook.packages[0].id }
   })
 
-  return { playbooks: all, plays: nextPlays, formations: placedFormations }
+  // One formation covers both sides, so Right and Left copies saved before become one.
+  return mergeMirroredFormations(all, placedFormations, nextPlays)
 }
 
 interface LegacyPlaybook extends Playbook {

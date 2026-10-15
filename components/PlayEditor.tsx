@@ -45,6 +45,7 @@ export default function PlayEditorPage({
   play,
   formations,
   defaultFormationId,
+  defaultMirrored = false,
   onSave,
   onDelete,
   onClose
@@ -53,15 +54,21 @@ export default function PlayEditorPage({
   formations: Formation[]
   /** The playbook's base formation, picked for a new play. */
   defaultFormationId?: string
+  /** A new play started from a formation showing its other side starts on that side. */
+  defaultMirrored?: boolean
   onSave: (play: PlayEditorDraft) => void
   onDelete?: () => void
   onClose: () => void
 }) {
   const [formationId, setFormationId] = useState(play?.formationId || defaultFormationId || formations[0]?.id || '')
   const formation = formations.find((item) => item.id === formationId)
-  const [side, setSide] = useState<PlaySide>(() => (play ? playSide(play) : 'right'))
   // True when the players stand as the formation's mirror image, for the other side of the play.
-  const [mirrored, setMirrored] = useState(Boolean(play?.mirrored))
+  const [mirrored, setMirrored] = useState(play ? Boolean(play.mirrored) : defaultMirrored)
+  const [side, setSide] = useState<PlaySide>(() => {
+    if (play) return playSide(play)
+    const formationSide = playSide({ name: formation?.name || '' })
+    return defaultMirrored ? otherSide(formationSide) : formationSide
+  })
   /** A mirrored play calls its formation by the other side's name: Trips Right becomes Trips Left. */
   const formationName = (item?: Formation, flipped = mirrored) => (item && flipped ? flipName(item.name) : item?.name)
   // Plays written before the editor had a call are read back from their names where they can be.

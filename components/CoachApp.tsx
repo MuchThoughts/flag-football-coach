@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ClipboardList,
   Copy,
+  FlipHorizontal2,
   FileDown,
   Minimize2,
   Pencil,
@@ -51,12 +52,13 @@ import {
 } from '@/lib/playbook'
 import { LINEUPS_PER_UNIT } from '@/lib/types'
 import { RUN_BLUE } from '@/lib/play-lines'
+import { formationListName, otherSide, playSide } from '@/lib/play-flip'
 import { PlayDiagram, PrintPlaybookSheet } from '@/components/PlaybookExport'
 import { PackagesPanel } from '@/components/Packages'
 import FormationCanvas from '@/components/FormationCanvas'
 import PlayEditorPage from '@/components/PlayEditor'
 import DuplicateFormationSheet from '@/components/DuplicateFormationSheet'
-import { alignHorizontally, alignVertically, lineOf, spaceEvenly } from '@/lib/formation-edit'
+import { alignHorizontally, alignVertically, flipFormation, flipName, lineOf, spaceEvenly } from '@/lib/formation-edit'
 import { CallSheetsSheet } from '@/components/CallSheets'
 import PlaybookLibrary, { type PlaybookOverview } from '@/components/PlaybookLibrary'
 import { PackagesContext, usePackages, usePositions } from '@/components/PositionsContext'
@@ -366,7 +368,11 @@ export default function CoachApp() {
         applyAppState(JSON.parse(raw) as AppState)
       } catch {
         window.localStorage.removeItem(storageKey)
+        applyAppState(initialAppState)
       }
+    } else {
+      // A first visit still gets the same clean-up as a saved state, such as one formation for both sides.
+      applyAppState(initialAppState)
     }
     setLoaded(true)
   }, [])
@@ -1453,7 +1459,7 @@ function FormationPlaysGroup({
           )}
           <span className="min-w-0">
             <span className="flex items-center gap-1 truncate text-sm font-black">
-              {formation?.name || 'No formation'}
+              {formation ? formationListName(formation.name) : 'No formation'}
               {isBase && <Star size={11} className="shrink-0 fill-[#f7c948] text-[#b98a00]" aria-label="Base formation" />}
             </span>
             <span className="block truncate text-[11px] font-bold text-[#53665c]">
@@ -1539,8 +1545,9 @@ function PlaybookPage({
   const [tab, setTab] = useState<'plays' | 'formations' | 'packages'>('plays')
   const [filters, setFilters] = useState<PlayFilters>(emptyPlayFilters)
   const [editingPlay, setEditingPlay] = useState<PlaybookPlay | 'new' | null>(null)
-  /** Where a new play starts: the formation it was made from, or the base formation. */
+  /** Where a new play starts: the formation it was made from, or the base formation, and which side it shows. */
   const [newPlayFormationId, setNewPlayFormationId] = useState<string | undefined>()
+  const [newPlayMirrored, setNewPlayMirrored] = useState(false)
   const [editingFormation, setEditingFormation] = useState<Formation | 'new' | null>(null)
   const [exporting, setExporting] = useState(false)
   const [showCallSheets, setShowCallSheets] = useState(false)
@@ -1556,8 +1563,9 @@ function PlaybookPage({
   const packageName = (formation: Formation) =>
     (playbook.packages.find((item) => item.id === formation.packageId) || playbook.packages[0])?.name
 
-  function newPlay(formationId?: string) {
+  function newPlay(formationId?: string, mirrored = false) {
     setNewPlayFormationId(formationId)
+    setNewPlayMirrored(mirrored)
     setEditingPlay('new')
   }
 
@@ -1578,6 +1586,7 @@ function PlaybookPage({
             play={editingPlay === 'new' ? undefined : editingPlay}
             formations={formations}
             defaultFormationId={newPlayFormationId || baseFormation?.id}
+            defaultMirrored={newPlayMirrored}
             onSave={(play) => {
               savePlay(play)
               setEditingPlay(null)
@@ -1603,7 +1612,7 @@ function PlaybookPage({
               playbookName={playbook.name}
               plays={editingFormation === 'new' ? [] : plays.filter((play) => play.formationId === editingFormation.id)}
               onOpenPlay={setEditingPlay}
-              onNewPlay={() => editingFormation !== 'new' && newPlay(editingFormation.id)}
+              onNewPlay={(mirrored) => editingFormation !== 'new' && newPlay(editingFormation.id, mirrored)}
               onSave={(formation, makeBase) => {
                 saveFormation(formation)
                 if (makeBase) setBaseFormation(formation.id)
@@ -1724,7 +1733,7 @@ function PlaybookPage({
               onChange={(formationId) => setFilters({ ...filters, formationId })}
               options={[
                 { value: 'all', label: 'Any formation' },
-                ...formations.map((formation) => ({ value: formation.id, label: formation.name }))
+                ...formations.map((formation) => ({ value: formation.id, label: formationListName(formation.name) }))
               ]}
             />
             <button
@@ -1809,7 +1818,7 @@ function PlaybookPage({
             >
               <span className="flex items-baseline justify-between gap-2 px-0.5">
                 <span className="flex min-w-0 items-center gap-1 truncate text-sm font-black">
-                  {formation.name}
+                  {formationListName(formation.name)}
                   {formation.id === baseFormation?.id && (
                     <Star size={11} className="shrink-0 fill-[#f7c948] text-[#b98a00]" aria-label="Base formation" />
                   )}
@@ -1975,7 +1984,8 @@ function FormationEditorPage({
   /** The plays run from this formation. */
   plays: PlaybookPlay[]
   onOpenPlay: (play: PlaybookPlay) => void
-  onNewPlay: () => void
+  /** Starts a play on the side the formation is showing. */
+  onNewPlay: (mirrored: boolean) => void
   takenNames: string[]
   onSave: (formation: FormationDraft, makeBase: boolean) => void
   /** Saves this formation as it stands, then adds the copy right after it. */
@@ -1994,6 +2004,10 @@ function FormationEditorPage({
   const [line, setLine] = useState(lineOf(startFrom))
   const [selected, setSelected] = useState<string[]>([])
   const [makeBase, setMakeBase] = useState(Boolean(formation && baseFormation?.id === formation.id))
+  // Every formation has a right and a left. Flipping shows the other side; it saves as the side it was made on.
+  const [flipped, setFlipped] = useState(false)
+  const savedSide = playSide({ name: formation?.name || '' })
+  const side = flipped ? otherSide(savedSide) : savedSide
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [duplicating, setDuplicating] = useState(false)
   const codes = players.map((player) => player.code)
@@ -2018,7 +2032,17 @@ function FormationEditorPage({
       next[player.code] = positions[player.code] || placeAll(positions, players)[player.code]
       return next
     }, {})
-    return { id: draftId, name: name.trim() || 'Formation', packageId, positions: kept, lineOfScrimmage: line }
+    const named = name.trim() || 'Formation'
+    return flipped
+      ? { id: draftId, name: flipName(named), packageId, positions: flipFormation(kept, players), lineOfScrimmage: line }
+      : { id: draftId, name: named, packageId, positions: kept, lineOfScrimmage: line }
+  }
+
+  /** Mirrors the formation across the center to show its other side. Linemen keep their spots. */
+  function flipSide() {
+    setPositions((current) => flipFormation(placeAll(current, players), players))
+    setName((current) => flipName(current))
+    setFlipped((current) => !current)
   }
 
   function save() {
@@ -2060,6 +2084,23 @@ function FormationEditorPage({
           </div>
         ) : (
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
+            <div className="flex items-center rounded-lg border border-[#d8ded5] bg-white p-0.5" role="group" aria-label="Side">
+              <FlipHorizontal2 size={14} className="mx-1 hidden text-[#53665c] sm:block" />
+              {(['right', 'left'] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => option !== side && flipSide()}
+                  aria-pressed={side === option}
+                  title={side === option ? `Showing the ${option}` : `Flip to the ${option}. Linemen keep their spots.`}
+                  className={`rounded-md px-2 py-1 text-xs font-black capitalize ${
+                    side === option ? 'bg-[#10201a] text-white' : 'text-[#53665c] hover:text-[#10201a]'
+                  }`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
             {/* Rarely used, so it stays quiet. */}
             <button
               type="button"
@@ -2196,7 +2237,7 @@ function FormationEditorPage({
               {formation ? (
                 <button
                   type="button"
-                  onClick={onNewPlay}
+                  onClick={() => onNewPlay(flipped)}
                   className="ml-auto flex items-center gap-1 rounded-md bg-[#1f7a4d] px-2 py-1 text-xs font-black text-white"
                 >
                   <Plus size={13} />

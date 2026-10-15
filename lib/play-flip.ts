@@ -123,3 +123,47 @@ export function formationTitle(name: string, mirrored?: boolean) {
   const flipped = flipName(name)
   return flipped !== name ? flipped : `${name} (flipped)`
 }
+
+/** A formation's name without its side, for lists where one entry stands for both: "Trips Right" is "Trips". */
+export function formationListName(name: string) {
+  return name.replace(/\s*\b(left|right)\b/gi, '').replace(/\s+/g, ' ').trim() || name
+}
+
+/**
+ * Formations used to be saved twice, once per side ("Trips Right" and
+ * "Trips Left"). Each formation now has both sides, so a pair becomes one:
+ * the right one stays, plays from the left one move onto it drawn mirrored,
+ * and a base formation that was the left one becomes the right one.
+ */
+export function mergeMirroredFormations<F extends Formation, P extends PlaybookPlay, B extends { id: string; baseFormationId?: string }>(
+  playbooks: B[],
+  formations: F[],
+  plays: P[]
+): { playbooks: B[]; formations: F[]; plays: P[] } {
+  const replaced = new Map<string, string>()
+  formations.forEach((formation) => {
+    if (!/\bleft\b/i.test(formation.name) || /\bright\b/i.test(formation.name)) return
+    const partnerName = flipName(formation.name).trim().toLowerCase()
+    const partner = formations.find(
+      (item) =>
+        item.id !== formation.id &&
+        item.playbookId === formation.playbookId &&
+        item.packageId === formation.packageId &&
+        item.name.trim().toLowerCase() === partnerName &&
+        !replaced.has(item.id)
+    )
+    if (partner) replaced.set(formation.id, partner.id)
+  })
+  if (replaced.size === 0) return { playbooks, formations, plays }
+  return {
+    playbooks: playbooks.map((playbook) =>
+      playbook.baseFormationId && replaced.has(playbook.baseFormationId) ? { ...playbook, baseFormationId: replaced.get(playbook.baseFormationId) } : playbook
+    ),
+    formations: formations.filter((formation) => !replaced.has(formation.id)),
+    plays: plays.map((play) => {
+      const target = replaced.get(play.formationId)
+      // Same lines, same side: the players just stand as the kept formation's mirror image.
+      return target ? { ...play, formationId: target, mirrored: !play.mirrored, side: playSide(play) } : play
+    })
+  }
+}

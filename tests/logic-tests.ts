@@ -13,7 +13,7 @@ import { getGameSummary, getResultCount } from '../lib/game-summary'
 import { migrateAppState } from '../lib/migrate-state'
 import { phinsPlaybook } from '../lib/phins-playbook'
 import { playDiagramSvg, playFileName } from '../lib/play-svg'
-import { bothSides, formationTitle, linePartners, mirrorPlay, playSide, playSpots, sideTitle } from '../lib/play-flip'
+import { bothSides, formationListName, formationTitle, linePartners, mergeMirroredFormations, mirrorPlay, playSide, playSpots, sideTitle } from '../lib/play-flip'
 import {
   bendThrough,
   DEFAULT_VIEW,
@@ -479,7 +479,12 @@ assert.equal(predrawing.plays[0].name, 'Sweep Right')
 // Already-migrated playbooks are left alone.
 const stablePlaybook = migrateAppState({ ...initialAppState, plays: [samplePlay] })
 assert.deepEqual(stablePlaybook.plays.map((play) => play.id), ['play-sample'])
-assert.deepEqual(stablePlaybook.formations.map((f) => f.id), initialAppState.formations.map((f) => f.id))
+// Right and Left copies of a formation become one; after that, loading again changes nothing.
+assert.deepEqual(
+  stablePlaybook.formations.map((f) => f.id),
+  mergeMirroredFormations([], initialAppState.formations, []).formations.map((f) => f.id)
+)
+assert.deepEqual(migrateAppState(stablePlaybook).formations.map((f) => f.id), stablePlaybook.formations.map((f) => f.id))
 
 // ---- The seeded Phins playbook ----
 const seeded = phinsPlaybook('team-dolphins')
@@ -546,7 +551,8 @@ const demoPlaybook = seedInto(
   [demoPlay('play-1', 'Sweep Right', 'formation-balanced')],
   [demoFormation('formation-balanced', 'Balanced')]
 )
-assert.equal(demoPlaybook.formations.length, 9)
+// Nine seeded formations, with the three Right and Left pairs made one each.
+assert.equal(demoPlaybook.formations.length, 6)
 assert.deepEqual(demoPlaybook.plays, [])
 assert.equal(demoPlaybook.formations.every((formation) => formation.id.startsWith('formation-phins-')), true)
 
@@ -556,7 +562,7 @@ const coachPlaybook = seedInto(
   [demoFormation('formation-balanced', 'Balanced'), demoFormation('formation-mine', 'My Set')]
 )
 assert.deepEqual(coachPlaybook.plays, [])
-assert.equal(coachPlaybook.formations.length, 10)
+assert.equal(coachPlaybook.formations.length, 7)
 assert.deepEqual(
   coachPlaybook.formations.filter((formation) => !formation.id.startsWith('formation-phins-')).map((f) => f.id),
   ['formation-mine']
@@ -1483,6 +1489,42 @@ assert.equal(roundTripFailures, 0)
   const svgFormation = { ...formation, id: 'f', teamId: 't', playbookId: 'p', name: 'F', packageId: 'x', createdAt: '', updatedAt: '' }
   assert.ok(playDiagramSvg(play, svgFormation, positions).includes('cx="120" cy="82"'))
   assert.ok(playDiagramSvg(flipped, svgFormation, positions).includes('cx="80" cy="82"'))
+}
+
+// ---- One formation, both sides ----
+{
+  const base = { teamId: 't', playbookId: 'p', packageId: 'pk', createdAt: '', updatedAt: '' }
+  const right = { ...base, id: 'fr', name: 'Trips Right', positions: { RB: { x: 60, y: 82 } } }
+  const left = { ...base, id: 'fl', name: 'Trips Left', positions: { RB: { x: 40, y: 82 } } }
+  const lonely = { ...base, id: 'el', name: 'Empty Left', positions: {} }
+  const otherPackage = { ...base, id: 'bl', name: 'Bunch Left', packageId: 'other', positions: {} }
+  const bunchRight = { ...base, id: 'br', name: 'Bunch Right', positions: {} }
+  const playOn = (id: string, formationId: string, extra = {}) =>
+    ({ ...samplePlay, id, formationId, name: `${id}`, ...extra }) as PlaybookPlay
+  const merged = mergeMirroredFormations(
+    [{ id: 'p', baseFormationId: 'fl' }],
+    [right, left, lonely, otherPackage, bunchRight],
+    [playOn('a', 'fl', { name: 'Trips Left Sweep Left' }), playOn('b', 'fr'), playOn('c', 'fl', { mirrored: true, name: 'Trips Right Dive' })]
+  )
+  // The left copy goes; one with no right partner, or in another package, stays.
+  assert.deepEqual(merged.formations.map((f) => f.id), ['fr', 'el', 'bl', 'br'])
+  assert.equal(merged.playbooks[0].baseFormationId, 'fr')
+  // Its plays move to the right one, drawn mirrored, keeping their side.
+  assert.equal(merged.plays[0].formationId, 'fr')
+  assert.equal(merged.plays[0].mirrored, true)
+  assert.equal(merged.plays[0].side, 'left')
+  assert.deepEqual(merged.plays[1], playOn('b', 'fr'))
+  assert.equal(merged.plays[2].mirrored, false)
+  assert.equal(merged.plays[2].side, 'right')
+  // Nothing left to merge the second time.
+  const again = mergeMirroredFormations(merged.playbooks, merged.formations, merged.plays)
+  assert.equal(again.formations, merged.formations)
+
+  // Lists show one name for both sides.
+  assert.equal(formationListName('Trips Right'), 'Trips')
+  assert.equal(formationListName('Splitback Twins Left'), 'Splitback Twins')
+  assert.equal(formationListName('Bunch'), 'Bunch')
+  assert.equal(formationListName('Right'), 'Right')
 }
 
 console.log('logic tests passed')
